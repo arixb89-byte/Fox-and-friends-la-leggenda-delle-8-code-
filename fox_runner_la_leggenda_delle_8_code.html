@@ -1,0 +1,3177 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fox Runner: La Leggenda delle 8 Code</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Impostazioni base per evitare lo scroll e selezioni indesiderate su mobile */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            touch-action: manipulation;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1625;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .font-pixel {
+            font-family: 'Press Start 2P', monospace;
+        }
+
+        /* Contenitore canvas reattivo */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+        }
+
+        /* Animazione pulsante per i testi di invito al tocco */
+        @keyframes pulseSlow {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+
+        .animate-pulse-slow {
+            animation: pulseSlow 1.6s infinite ease-in-out;
+        }
+
+        /* Animazione banner nuovo livello */
+        @keyframes levelBannerPop {
+            0% { transform: translate(-50%, -20px) scale(0.7); opacity: 0; }
+            15% { transform: translate(-50%, 0) scale(1.08); opacity: 1; }
+            25% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            85% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -15px) scale(0.95); opacity: 0; }
+        }
+
+        .level-banner-active {
+            animation: levelBannerPop 2.4s forwards cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* Animazione pulsante abilità pronto */
+        @keyframes skillReadyGlow {
+            0%, 100% { box-shadow: 0 0 18px rgba(251, 191, 36, 0.55); transform: scale(1); }
+            50% { box-shadow: 0 0 28px rgba(249, 115, 22, 0.85); transform: scale(1.04); }
+        }
+
+        .skill-ready {
+            animation: skillReadyGlow 1.5s infinite ease-in-out;
+        }
+
+        /* Scrollbar sottile per le schede della lobby */
+        .lobby-scroll::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        .lobby-scroll::-webkit-scrollbar-thumb {
+            background: rgba(251, 191, 36, 0.4);
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Canvas principale del gioco (sfondo animato sia in Lobby che in Corsa) -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD superiore IN CORSA (nascosto nella Mini Lobby) -->
+    <div id="hud" class="hidden pointer-events-none absolute top-0 left-0 w-full p-3 sm:p-5 flex flex-col gap-2 z-10">
+        <div class="flex justify-between items-start w-full">
+            <!-- Livello e indicatore code -->
+            <div class="bg-slate-900/80 backdrop-blur-md border border-orange-500/40 rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 text-white shadow-lg max-w-[62%] sm:max-w-xs">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span id="hud-level" class="font-pixel text-xs sm:text-sm text-orange-400">LVL 1</span>
+                    <span class="text-xs text-slate-300 font-semibold" id="hud-tails-text">1/8 Code</span>
+                </div>
+                <div id="hud-form-name" class="text-[11px] sm:text-xs font-extrabold text-amber-300 truncate mt-0.5">
+                    Volpe Rossa Classica
+                </div>
+                <!-- Icone visive delle 8 code -->
+                <div id="tails-icons" class="flex items-center gap-1 mt-1.5">
+                    <!-- Generato dinamicamente via JS -->
+                </div>
+                <!-- Badge Abilità Attive Sbloccate -->
+                <div id="hud-abilities-badges" class="flex flex-wrap items-center gap-1 mt-1.5">
+                    <span class="text-[10px] bg-slate-800/90 text-slate-300 px-1.5 py-0.5 rounded-md border border-slate-700">🏃 Corsa Agile</span>
+                </div>
+                <!-- Barra progresso prossima coda / arrivo Boss -->
+                <div class="w-full bg-slate-700/80 h-1.5 rounded-full mt-2 overflow-hidden">
+                    <div id="level-progress-bar" class="bg-gradient-to-r from-orange-500 to-amber-300 h-full rounded-full transition-all duration-150" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Punteggio, Sfere Run, Guida Abilità e Pulsante Audio -->
+            <div class="flex items-start gap-1.5 sm:gap-2">
+                <div class="bg-slate-900/80 backdrop-blur-md border border-slate-600/40 rounded-2xl px-2.5 py-2 sm:px-4 sm:py-2.5 text-right text-white shadow-lg">
+                    <div class="flex items-center justify-end gap-2 text-[9px] sm:text-xs text-slate-400 uppercase tracking-wider font-bold">
+                        <span class="text-sky-300">🔮 <span id="hud-run-orbs">0</span></span>
+                        <span>REC <span id="hud-highscore" class="text-amber-300 font-pixel">00000</span></span>
+                    </div>
+                    <div id="hud-score" class="font-pixel text-sm sm:text-xl text-white mt-1">00000</div>
+                    <div id="ng-plus-badge" class="hidden text-[9px] font-bold text-amber-300 mt-0.5">✨ NG+ x2</div>
+                </div>
+
+                <!-- Bottone Guida Abilità (pausa automatica in gioco) -->
+                <button id="skills-guide-btn" aria-label="Legenda Abilità" class="pointer-events-auto bg-slate-900/80 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-amber-500/40 rounded-2xl p-2.5 sm:p-3 text-amber-300 shadow-lg transition cursor-pointer" title="Legenda Abilità">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </button>
+
+                <!-- Bottone Audio (cliccabile) -->
+                <button id="mute-btn" aria-label="Attiva o disattiva audio" class="pointer-events-auto bg-slate-900/80 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-600/40 rounded-2xl p-2.5 sm:p-3 text-white shadow-lg transition cursor-pointer">
+                    <svg id="icon-sound-on" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 sm:w-6 sm:h-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    <svg id="icon-sound-off" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 sm:w-6 sm:h-6 text-slate-400 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Barra Vita Boss (appare solo durante la Boss Fight) -->
+        <div id="boss-hud" class="hidden self-center w-full max-w-md bg-slate-950/85 backdrop-blur-md border-2 border-purple-500/70 rounded-2xl px-4 py-2 text-white shadow-2xl mt-1">
+            <div class="flex justify-between items-center text-xs font-extrabold">
+                <span class="text-purple-300 tracking-wide">🐉 DRAGO DELL'ECLISSI (BOSS)</span>
+                <span id="boss-hp-text" class="font-pixel text-[10px] text-rose-400">100 / 100</span>
+            </div>
+            <div class="w-full bg-slate-800 h-3 rounded-full mt-1.5 overflow-hidden border border-purple-900">
+                <div id="boss-hp-bar" class="bg-gradient-to-r from-rose-600 via-purple-500 to-amber-400 h-full rounded-full transition-all duration-150" style="width: 100%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MINI LOBBY INTERATTIVA: SANTUARIO DELLA VOLPE                         -->
+    <!-- ===================================================================== -->
+    <div id="lobby-screen" class="absolute inset-0 flex flex-col justify-between p-3 sm:p-5 z-30 pointer-events-none">
+        <!-- Top Bar Santuario: Titolo, Valuta Sfere Spirituali, Record e Audio -->
+        <div class="pointer-events-auto flex items-center justify-between gap-2 w-full max-w-2xl mx-auto">
+            <div class="bg-slate-900/85 backdrop-blur-md border border-orange-500/40 rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 shadow-xl">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-base sm:text-lg">⛩️</span>
+                    <h1 class="font-pixel text-[10px] sm:text-xs text-orange-400 leading-tight">SANTUARIO VOLPE</h1>
+                </div>
+                <div class="text-[10px] sm:text-xs text-slate-300 font-semibold mt-0.5">
+                    Record: <span id="lobby-highscore" class="text-amber-300 font-pixel text-[10px]">00000</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- Contatore Permanente Sfere Spirituali -->
+                <div class="bg-slate-900/90 backdrop-blur-md border border-sky-400/50 rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 shadow-xl flex items-center gap-2">
+                    <span class="text-base sm:text-xl">🔮</span>
+                    <div>
+                        <div class="text-[9px] text-sky-300 font-bold uppercase tracking-wider">Sfere</div>
+                        <div id="lobby-orbs-count" class="font-pixel text-xs sm:text-sm text-white">0</div>
+                    </div>
+                </div>
+
+                <!-- Audio in Lobby -->
+                <button id="lobby-mute-btn" aria-label="Audio Santuario" class="bg-slate-900/85 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-600/50 rounded-2xl p-2.5 sm:p-3 text-white shadow-xl transition cursor-pointer">
+                    <svg id="lobby-icon-sound-on" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    <svg id="lobby-icon-sound-off" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-slate-400 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Area Centrale Libera (mostra la Volpe animata al centro del Santuario + badge forma) -->
+        <div class="flex-1 flex flex-col items-center justify-start pt-2 sm:pt-3 pointer-events-none">
+            <div class="bg-slate-950/65 backdrop-blur-sm border border-amber-400/30 rounded-full px-3.5 py-1 text-center shadow-lg">
+                <span class="text-[10px] sm:text-xs font-extrabold text-amber-200" id="lobby-preview-label">
+                    🦊 Aspetto: Evoluzione Dinamica (1→8 Code)
+                </span>
+            </div>
+        </div>
+
+        <!-- Pannello Inferiore Compatto della Mini Lobby (Tabs + Contenuto + Tasto CORRI!) -->
+        <div class="pointer-events-auto w-full max-w-2xl mx-auto bg-slate-900/90 backdrop-blur-md border-2 border-orange-500/50 rounded-3xl p-3 sm:p-4 shadow-2xl flex flex-col gap-2.5">
+            <!-- Navigazione a 3 Schede (Tab) -->
+            <div class="grid grid-cols-3 gap-1.5 bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
+                <button data-tab="aspect" class="lobby-tab-btn bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-extrabold text-[11px] sm:text-xs py-2 px-2 rounded-xl transition cursor-pointer">
+                    🦊 ASPETTO
+                </button>
+                <button data-tab="upgrades" class="lobby-tab-btn text-slate-300 hover:text-white font-extrabold text-[11px] sm:text-xs py-2 px-2 rounded-xl transition cursor-pointer">
+                    ⚡ POTENZIA
+                </button>
+                <button data-tab="bestiary" class="lobby-tab-btn text-slate-300 hover:text-white font-extrabold text-[11px] sm:text-xs py-2 px-2 rounded-xl transition cursor-pointer">
+                    📜 BESTIARIO
+                </button>
+            </div>
+
+            <!-- Contenuto Dinamico delle Schede (altezza compatta per smartphone) -->
+            <div class="h-36 sm:h-40 overflow-y-auto lobby-scroll pr-0.5">
+                <!-- TAB 1: SANTUARIO / ASPETTO -->
+                <div id="tab-content-aspect" class="space-y-2">
+                    <div class="flex items-center justify-between gap-2 bg-slate-800/80 p-2 rounded-xl border border-amber-500/30">
+                        <div class="text-[11px] sm:text-xs text-slate-200">
+                            <span class="font-bold text-amber-300">Modalità Skin:</span>
+                            <span id="skin-mode-desc">Cambia colore ad ogni livello</span>
+                        </div>
+                        <button id="select-dynamic-skin-btn" class="bg-amber-500 text-slate-950 font-bold text-[10px] sm:text-xs px-2.5 py-1.5 rounded-lg active:scale-95 transition cursor-pointer shrink-0">
+                            ✨ DINAMICA
+                        </button>
+                    </div>
+                    <!-- Griglia 8 Forme Leggendarie -->
+                    <div id="lobby-skins-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        <!-- Generato dinamicamente via JS -->
+                    </div>
+                </div>
+
+                <!-- TAB 2: POTENZIAMENTI (UPGRADE) -->
+                <div id="tab-content-upgrades" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <!-- Generato dinamicamente via JS -->
+                </div>
+
+                <!-- TAB 3: BESTIARIO & POTERI -->
+                <div id="tab-content-bestiary" class="hidden space-y-2 text-xs">
+                    <!-- Dossier Boss Finale -->
+                    <div class="bg-gradient-to-r from-purple-950/90 to-rose-950/80 border border-purple-500/50 rounded-2xl p-2.5 flex items-center justify-between gap-2">
+                        <div>
+                            <div class="font-extrabold text-purple-200 text-xs sm:text-sm">🐉 Boss: Drago dell'Eclissi</div>
+                            <div class="text-[10px] sm:text-[11px] text-rose-200/90 mt-0.5">
+                                Appare dopo aver raggiunto le <strong>8 Code</strong>. Usa il tasto <strong>POTERE</strong> e le <strong>Sfere Sacre</strong> per sconfiggerlo!
+                            </div>
+                        </div>
+                        <div class="bg-slate-950/80 border border-purple-400/40 rounded-xl px-2.5 py-1.5 text-center shrink-0">
+                            <div class="text-[9px] text-purple-300 uppercase font-bold">Sconfitto</div>
+                            <div id="lobby-boss-kills" class="font-pixel text-xs sm:text-sm text-amber-300 mt-0.5">0x</div>
+                        </div>
+                    </div>
+
+                    <!-- Lista compatta delle 8 abilità -->
+                    <div id="lobby-powers-list" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        <!-- Generato dinamicamente via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pulsante Centrale Grande CORRI! -->
+            <button id="start-btn" class="w-full bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 hover:brightness-110 active:scale-[0.98] text-slate-950 font-pixel text-sm sm:text-base py-3.5 sm:py-4 px-6 rounded-2xl shadow-lg shadow-orange-500/35 transition animate-pulse-slow cursor-pointer flex items-center justify-center gap-2">
+                <span>🦊 CORRI!</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Banner notifica Level Up / Nuova Coda / Avviso Boss -->
+    <div id="level-banner" class="pointer-events-none hidden absolute top-32 sm:top-36 left-1/2 -translate-x-1/2 z-20 bg-gradient-to-r from-orange-600 via-amber-500 to-orange-600 text-white px-5 py-3 rounded-2xl shadow-2xl border-2 border-yellow-200 text-center w-[92%] max-w-md">
+        <div id="banner-title" class="font-pixel text-xs sm:text-sm text-yellow-100 drop-shadow">LIVELLO 2!</div>
+        <div id="banner-subtitle" class="text-sm sm:text-base font-extrabold mt-1">✨ Hai ottenuto una nuova coda! (2/8)</div>
+        <div id="banner-ability" class="text-xs font-bold text-slate-950 bg-yellow-200/95 rounded-lg px-2.5 py-1 mt-1.5 inline-block"></div>
+    </div>
+
+    <!-- Pulsante Azione Touch grande in basso a destra (sbloccato dal Livello 5) -->
+    <button id="skill-action-btn" class="hidden fixed bottom-5 right-5 sm:bottom-8 sm:right-8 z-20 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-purple-600 via-rose-500 to-amber-500 border-4 border-amber-200 text-white shadow-2xl flex flex-col items-center justify-center active:scale-90 transition cursor-pointer overflow-hidden">
+        <!-- Overlay cooldown -->
+        <div id="skill-cooldown-overlay" class="absolute inset-0 bg-slate-950/75 flex items-center justify-center font-pixel text-xs text-slate-200 hidden">
+            4.0s
+        </div>
+        <span id="skill-btn-icon" class="text-2xl sm:text-3xl leading-none">🔥</span>
+        <span id="skill-btn-label" class="font-pixel text-[8px] sm:text-[9px] mt-1 tracking-tight text-yellow-100">POTERE</span>
+    </button>
+
+    <!-- Modale Legenda Abilità in Corsa -->
+    <div id="skills-modal" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-40">
+        <div class="bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-5 sm:p-6 max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl text-white">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-pixel text-sm sm:text-base text-amber-400">⚡ POTERI DELLE 8 CODE</h3>
+                <button id="close-skills-modal" class="bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold cursor-pointer">
+                    CHIUDI ✕
+                </button>
+            </div>
+            <div class="overflow-y-auto mt-3 space-y-2 pr-1 text-xs sm:text-sm">
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-orange-500/30">
+                    <span class="font-bold text-orange-400">Lv.1 (1 Coda) - Volpe Rossa:</span> Corsa agile base.
+                </div>
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-amber-500/30">
+                    <span class="font-bold text-amber-300">Lv.2 (2 Code) - Ambra Solare:</span> 🪽 <strong>Doppio Salto</strong> (tocca di nuovo in aria per un secondo salto).
+                </div>
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-emerald-500/30">
+                    <span class="font-bold text-emerald-300">Lv.3 (3 Code) - Giada:</span> 🍃 <strong>Scudo di Foglie</strong> (assorbe 1 colpo; si ricarica ad ogni livello o con le Sfere Spirituali).
+                </div>
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-cyan-500/30">
+                    <span class="font-bold text-cyan-200">Lv.4 (4 Code) - Cristallo Artico:</span> ❄️ <strong>Planata Eterea</strong> (tieni premuto il dito in aria per planare lentamente).
+                </div>
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-purple-500/30">
+                    <span class="font-bold text-purple-300">Lv.5 (5 Code) - Ametista Ombra:</span> 🔮 <strong>Onda d'Ombra</strong> (sblocca il pulsante in basso a destra per distruggere gli ostacoli davanti).
+                </div>
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-rose-500/30">
+                    <span class="font-bold text-rose-400">Lv.6 (6 Code) - Cremisi Fuoco Fatuo:</span> 🔥 <strong>Fiamma Solare</strong> (l'attacco lancia una sfera di fuoco a distanza che colpisce anche il Boss).
+                </div>
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-sky-500/30">
+                    <span class="font-bold text-sky-300">Lv.7 (7 Code) - Celestiale Astrale:</span> 🧲 <strong>Magnete Spirituale</strong> (attira le sfere d'energia da lontano e ricarica più veloce).
+                </div>
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-yellow-400/50">
+                    <span class="font-bold text-yellow-300">Lv.8 (8 Code) - Kitsune Divina:</span> 👑 <strong>Furia delle 8 Code</strong> (ventaglio di 3 sfere di fuoco divino e sfida contro il <strong>Drago dell'Eclissi</strong>!).
+                </div>
+            </div>
+            <button id="resume-from-modal-btn" class="mt-4 w-full bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-pixel text-xs py-3.5 rounded-2xl font-bold cursor-pointer">
+                TORNA AL GIOCO
+            </button>
+        </div>
+    </div>
+
+    <!-- Schermata Game Over (Overlay) -->
+    <div id="gameover-screen" class="hidden absolute inset-0 bg-slate-950/75 backdrop-blur-sm flex flex-col items-center justify-center p-5 text-center z-30">
+        <div class="bg-slate-900/95 border-2 border-red-500/50 rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl">
+            <h2 class="font-pixel text-xl sm:text-2xl text-red-400 drop-shadow">GAME OVER</h2>
+            <p id="gameover-flavor" class="text-slate-300 text-xs sm:text-sm mt-2">
+                La volpe ha inciampato lungo il sentiero!
+            </p>
+
+            <div class="grid grid-cols-3 gap-2 sm:gap-3 mt-4">
+                <div class="bg-slate-800/90 rounded-2xl p-2.5 border border-slate-700">
+                    <div class="text-[10px] text-slate-400 uppercase font-bold">Punti</div>
+                    <div id="final-score" class="font-pixel text-xs sm:text-sm text-white mt-1">0</div>
+                </div>
+                <div class="bg-slate-800/90 rounded-2xl p-2.5 border border-slate-700">
+                    <div class="text-[10px] text-slate-400 uppercase font-bold">Record</div>
+                    <div id="final-highscore" class="font-pixel text-xs sm:text-sm text-amber-300 mt-1">0</div>
+                </div>
+                <div class="bg-slate-800/90 rounded-2xl p-2.5 border border-orange-500/40">
+                    <div class="text-[10px] text-orange-300 uppercase font-bold">Code</div>
+                    <div id="final-tails" class="font-pixel text-xs sm:text-sm text-orange-400 mt-1">1/8</div>
+                </div>
+            </div>
+
+            <!-- Sfere guadagnate nella run -->
+            <div class="mt-3 bg-sky-950/60 border border-sky-400/40 rounded-2xl py-2 px-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-sky-200 font-bold">
+                <span>🔮 Sfere raccolte:</span>
+                <span id="gameover-earned-orbs" class="font-pixel text-sky-300">+0</span>
+            </div>
+
+            <div id="new-record-badge" class="hidden mt-3 bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-bold py-1.5 px-3 rounded-xl">
+                🏆 NUOVO RECORD PERSONALE!
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2.5 mt-5">
+                <button id="gameover-lobby-btn" class="bg-slate-800 hover:bg-slate-700 active:scale-95 border border-amber-400/50 text-amber-300 font-pixel text-[10px] sm:text-xs py-4 px-4 rounded-2xl transition cursor-pointer">
+                    ⛩️ SANTUARIO
+                </button>
+                <button id="restart-btn" class="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 active:scale-95 text-slate-950 font-pixel text-[10px] sm:text-xs py-4 px-5 rounded-2xl shadow-lg shadow-orange-500/30 transition cursor-pointer">
+                    RIGIOCA SUBITO
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schermata Vittoria Leggendaria sul Boss (Overlay) -->
+    <div id="victory-screen" class="hidden absolute inset-0 bg-slate-950/75 backdrop-blur-md flex flex-col items-center justify-center p-5 text-center z-30">
+        <div class="bg-gradient-to-b from-slate-900 via-amber-950/40 to-slate-900 border-2 border-yellow-400 rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl">
+            <div class="text-3xl sm:text-4xl mb-2">👑🦊✨</div>
+            <h2 class="font-pixel text-lg sm:text-xl text-yellow-300 leading-relaxed drop-shadow">
+                VITTORIA LEGGENDARIA!
+            </h2>
+            <p class="text-amber-100 text-xs sm:text-sm mt-2 leading-relaxed">
+                Hai sconfitto il <strong>Drago dell'Eclissi</strong> con il potere supremo della <strong>Kitsune Divina a 8 Code</strong>!
+            </p>
+
+            <div class="grid grid-cols-2 gap-3 mt-4">
+                <div class="bg-slate-900/90 rounded-2xl p-2.5 border border-yellow-500/40">
+                    <div class="text-[10px] text-amber-300 uppercase font-bold">Punteggio</div>
+                    <div id="victory-score" class="font-pixel text-sm sm:text-base text-white mt-1">0</div>
+                </div>
+                <div class="bg-slate-900/90 rounded-2xl p-2.5 border border-amber-500/40">
+                    <div class="text-[10px] text-amber-300 uppercase font-bold">Tempo</div>
+                    <div id="victory-time" class="font-pixel text-sm sm:text-base text-amber-300 mt-1">00:00</div>
+                </div>
+            </div>
+
+            <!-- Premio Sfere Boss -->
+            <div class="mt-3 bg-sky-950/70 border border-sky-400/50 rounded-2xl py-2 px-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-sky-200 font-bold">
+                <span>🔮 Tesoro Sfere (incluso Premio Boss):</span>
+                <span id="victory-earned-orbs" class="font-pixel text-sky-300">+0</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2 mt-5">
+                <button id="ngplus-btn" class="flex-1 bg-gradient-to-r from-yellow-400 via-amber-400 to-orange-500 hover:brightness-110 active:scale-95 text-slate-950 font-pixel text-[10px] sm:text-xs py-3.5 px-3 rounded-2xl shadow-lg shadow-amber-500/30 transition cursor-pointer">
+                    INFINITO (NG+ x2)
+                </button>
+                <button id="victory-lobby-btn" class="bg-slate-800 hover:bg-slate-700 active:scale-95 border border-amber-400/50 text-amber-300 font-pixel text-[10px] sm:text-xs py-3.5 px-3 rounded-2xl transition cursor-pointer">
+                    ⛩️ SANTUARIO
+                </button>
+                <button id="victory-restart-btn" class="bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-600 text-white font-pixel text-[10px] sm:text-xs py-3.5 px-3 rounded-2xl transition cursor-pointer">
+                    DA CAPO
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * FOX RUNNER: LA LEGGENDA DELLE 8 CODE - EDIZIONE SANTUARIO (MINI LOBBY), ABILITÀ & BOSS FINALE
+ */
+
+(function() {
+    // --- ELEMENTI DOM ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const hudEl = document.getElementById('hud');
+    const lobbyScreen = document.getElementById('lobby-screen');
+    const gameoverScreen = document.getElementById('gameover-screen');
+    const victoryScreen = document.getElementById('victory-screen');
+    const skillsModal = document.getElementById('skills-modal');
+
+    const startBtn = document.getElementById('start-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    const gameoverLobbyBtn = document.getElementById('gameover-lobby-btn');
+    const victoryRestartBtn = document.getElementById('victory-restart-btn');
+    const victoryLobbyBtn = document.getElementById('victory-lobby-btn');
+    const ngplusBtn = document.getElementById('ngplus-btn');
+    const skillsGuideBtn = document.getElementById('skills-guide-btn');
+    const closeSkillsModal = document.getElementById('close-skills-modal');
+    const resumeFromModalBtn = document.getElementById('resume-from-modal-btn');
+
+    const muteBtn = document.getElementById('mute-btn');
+    const lobbyMuteBtn = document.getElementById('lobby-mute-btn');
+    const iconSoundOn = document.getElementById('icon-sound-on');
+    const iconSoundOff = document.getElementById('icon-sound-off');
+    const lobbyIconSoundOn = document.getElementById('lobby-icon-sound-on');
+    const lobbyIconSoundOff = document.getElementById('lobby-icon-sound-off');
+
+    // Elementi Lobby
+    const lobbyHighscoreEl = document.getElementById('lobby-highscore');
+    const lobbyOrbsCountEl = document.getElementById('lobby-orbs-count');
+    const lobbyPreviewLabel = document.getElementById('lobby-preview-label');
+    const lobbyTabBtns = document.querySelectorAll('.lobby-tab-btn');
+    const tabContentAspect = document.getElementById('tab-content-aspect');
+    const tabContentUpgrades = document.getElementById('tab-content-upgrades');
+    const tabContentBestiary = document.getElementById('tab-content-bestiary');
+    const selectDynamicSkinBtn = document.getElementById('select-dynamic-skin-btn');
+    const skinModeDesc = document.getElementById('skin-mode-desc');
+    const lobbySkinsGrid = document.getElementById('lobby-skins-grid');
+    const lobbyBossKillsEl = document.getElementById('lobby-boss-kills');
+    const lobbyPowersList = document.getElementById('lobby-powers-list');
+
+    // Elementi HUD In-Game
+    const hudLevel = document.getElementById('hud-level');
+    const hudTailsText = document.getElementById('hud-tails-text');
+    const hudFormName = document.getElementById('hud-form-name');
+    const hudAbilitiesBadges = document.getElementById('hud-abilities-badges');
+    const tailsIconsContainer = document.getElementById('tails-icons');
+    const levelProgressBar = document.getElementById('level-progress-bar');
+    const hudScore = document.getElementById('hud-score');
+    const hudHighscore = document.getElementById('hud-highscore');
+    const hudRunOrbs = document.getElementById('hud-run-orbs');
+    const ngPlusBadge = document.getElementById('ng-plus-badge');
+
+    const bossHud = document.getElementById('boss-hud');
+    const bossHpText = document.getElementById('boss-hp-text');
+    const bossHpBar = document.getElementById('boss-hp-bar');
+
+    const skillActionBtn = document.getElementById('skill-action-btn');
+    const skillCooldownOverlay = document.getElementById('skill-cooldown-overlay');
+    const skillBtnIcon = document.getElementById('skill-btn-icon');
+    const skillBtnLabel = document.getElementById('skill-btn-label');
+
+    const levelBanner = document.getElementById('level-banner');
+    const bannerTitle = document.getElementById('banner-title');
+    const bannerSubtitle = document.getElementById('banner-subtitle');
+    const bannerAbility = document.getElementById('banner-ability');
+
+    const finalScoreEl = document.getElementById('final-score');
+    const finalHighscoreEl = document.getElementById('final-highscore');
+    const finalTailsEl = document.getElementById('final-tails');
+    const gameoverEarnedOrbsEl = document.getElementById('gameover-earned-orbs');
+    const gameoverFlavorEl = document.getElementById('gameover-flavor');
+    const newRecordBadge = document.getElementById('new-record-badge');
+
+    const victoryScoreEl = document.getElementById('victory-score');
+    const victoryTimeEl = document.getElementById('victory-time');
+    const victoryEarnedOrbsEl = document.getElementById('victory-earned-orbs');
+
+    // --- SISTEMA AUDIO (Web Audio API senza file esterni) ---
+    let audioCtx = null;
+    let isMuted = false;
+
+    function initAudio() {
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) {
+                audioCtx = new AudioContext();
+            }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function playSound(type) {
+        if (isMuted || !audioCtx) return;
+        try {
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'ui') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(760, now + 0.06);
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+                osc.start(now);
+                osc.stop(now + 0.07);
+            } else if (type === 'upgrade') {
+                const notes = [523.25, 659.25, 1046.5];
+                notes.forEach((freq, idx) => {
+                    const o = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    o.type = 'triangle';
+                    o.connect(g);
+                    g.connect(audioCtx.destination);
+                    const st = now + idx * 0.05;
+                    o.frequency.setValueAtTime(freq, st);
+                    g.gain.setValueAtTime(0.12, st);
+                    g.gain.exponentialRampToValueAtTime(0.001, st + 0.18);
+                    o.start(st);
+                    o.stop(st + 0.18);
+                });
+            } else if (type === 'jump') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(260, now);
+                osc.frequency.exponentialRampToValueAtTime(580, now + 0.14);
+                gain.gain.setValueAtTime(0.11, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'doublejump') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(420, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.16);
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+                osc.start(now);
+                osc.stop(now + 0.17);
+            } else if (type === 'shield') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(220, now + 0.25);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+                osc.start(now);
+                osc.stop(now + 0.26);
+            } else if (type === 'orb') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(660, now);
+                osc.frequency.exponentialRampToValueAtTime(990, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+                osc.start(now);
+                osc.stop(now + 0.11);
+            } else if (type === 'fireball') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(480, now);
+                osc.frequency.exponentialRampToValueAtTime(140, now + 0.22);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.23);
+                osc.start(now);
+                osc.stop(now + 0.23);
+            } else if (type === 'bosshit') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(160, now);
+                osc.frequency.exponentialRampToValueAtTime(75, now + 0.18);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+                osc.start(now);
+                osc.stop(now + 0.19);
+            } else if (type === 'bossroar') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(110, now);
+                osc.frequency.linearRampToValueAtTime(65, now + 0.55);
+                gain.gain.setValueAtTime(0.22, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+                osc.start(now);
+                osc.stop(now + 0.58);
+            } else if (type === 'levelup') {
+                const notes = [440, 554.37, 659.25, 880];
+                notes.forEach((freq, idx) => {
+                    const o = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    o.type = 'triangle';
+                    o.connect(g);
+                    g.connect(audioCtx.destination);
+                    const startTime = now + idx * 0.07;
+                    o.frequency.setValueAtTime(freq, startTime);
+                    g.gain.setValueAtTime(0.15, startTime);
+                    g.gain.exponentialRampToValueAtTime(0.001, startTime + 0.25);
+                    o.start(startTime);
+                    o.stop(startTime + 0.25);
+                });
+            } else if (type === 'victory') {
+                const notes = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const o = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    o.type = 'triangle';
+                    o.connect(g);
+                    g.connect(audioCtx.destination);
+                    const startTime = now + idx * 0.11;
+                    o.frequency.setValueAtTime(freq, startTime);
+                    g.gain.setValueAtTime(0.18, startTime);
+                    g.gain.exponentialRampToValueAtTime(0.001, startTime + 0.35);
+                    o.start(startTime);
+                    o.stop(startTime + 0.35);
+                });
+            } else if (type === 'hit') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(190, now);
+                osc.frequency.exponentialRampToValueAtTime(55, now + 0.3);
+                gain.gain.setValueAtTime(0.16, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+                osc.start(now);
+                osc.stop(now + 0.32);
+            }
+        } catch (e) {
+            // Ignora errori audio
+        }
+    }
+
+    function toggleMute(e) {
+        if (e) e.stopPropagation();
+        isMuted = !isMuted;
+        iconSoundOn.classList.toggle('hidden', isMuted);
+        iconSoundOff.classList.toggle('hidden', !isMuted);
+        lobbyIconSoundOn.classList.toggle('hidden', isMuted);
+        lobbyIconSoundOff.classList.toggle('hidden', !isMuted);
+    }
+
+    muteBtn.addEventListener('click', toggleMute);
+    lobbyMuteBtn.addEventListener('click', toggleMute);
+
+    // --- COSTANTI E CONFIGURAZIONE DI GIOCO ---
+    const MAX_TAILS = 8;
+    const POINTS_PER_LEVEL = 140;
+    const BOSS_TRIGGER_OFFSET = 180;
+
+    // Evoluzioni leggendarie della volpe + Abilità Sbloccate + Costo sblocco anticipato in Lobby
+    const FOX_FORMS = [
+        {
+            name: 'Volpe Rossa Classica',
+            shortName: 'Rossa Classica',
+            unlockCost: 0,
+            abilityTitle: '🏃 Corsa Agile Base',
+            abilityDesc: 'Agilità naturale della foresta.',
+            badgeColor: 'text-orange-400',
+            bodyMain: '#f97316',
+            bodyDark: '#ea580c',
+            bodyDeep: '#9a3412',
+            chest: '#fff7ed',
+            earInner: '#fed7aa',
+            paws: '#1c1917',
+            eye: '#1c1917',
+            eyeSparkle: '#ffffff',
+            tailPrimary: '#f97316',
+            tailSecondary: '#ea580c',
+            tailTip: '#fff7ed',
+            auraColor: null,
+            foreheadMark: null,
+            trailColor: null
+        },
+        {
+            name: "Volpe d'Ambra Solare",
+            shortName: 'Ambra Solare',
+            unlockCost: 15,
+            abilityTitle: '🪽 Doppio Salto Sbloccato!',
+            abilityDesc: 'Tocca di nuovo in aria per un secondo salto!',
+            badgeColor: 'text-amber-300',
+            bodyMain: '#f59e0b',
+            bodyDark: '#d97706',
+            bodyDeep: '#92400e',
+            chest: '#fef3c7',
+            earInner: '#fde68a',
+            paws: '#451a03',
+            eye: '#451a03',
+            eyeSparkle: '#fef08a',
+            tailPrimary: '#fbbf24',
+            tailSecondary: '#d97706',
+            tailTip: '#fef9c3',
+            auraColor: 'rgba(251, 191, 36, 0.25)',
+            foreheadMark: '#fef08a',
+            trailColor: '#fbbf24'
+        },
+        {
+            name: 'Volpe di Giada',
+            shortName: 'Giada Mistica',
+            unlockCost: 30,
+            abilityTitle: '🍃 Scudo di Foglie Attivo!',
+            abilityDesc: 'Assorbe 1 colpo! Si ricarica con le Sfere Spirituali.',
+            badgeColor: 'text-emerald-300',
+            bodyMain: '#10b981',
+            bodyDark: '#059669',
+            bodyDeep: '#065f46',
+            chest: '#ecfdf5',
+            earInner: '#a7f3d0',
+            paws: '#022c22',
+            eye: '#fef08a',
+            eyeSparkle: '#ffffff',
+            tailPrimary: '#34d399',
+            tailSecondary: '#059669',
+            tailTip: '#d1fae5',
+            auraColor: 'rgba(52, 211, 153, 0.32)',
+            foreheadMark: '#a7f3d0',
+            trailColor: '#34d399'
+        },
+        {
+            name: 'Volpe Artica di Cristallo',
+            shortName: 'Cristallo Artico',
+            unlockCost: 50,
+            abilityTitle: '❄️ Planata Eterea Sbloccata!',
+            abilityDesc: 'Tieni premuto in aria per planare lentamente!',
+            badgeColor: 'text-cyan-200',
+            bodyMain: '#e0f2fe',
+            bodyDark: '#bae6fd',
+            bodyDeep: '#38bdf8',
+            chest: '#ffffff',
+            earInner: '#7dd3fc',
+            paws: '#0c4a6e',
+            eye: '#0284c7',
+            eyeSparkle: '#ffffff',
+            tailPrimary: '#f0f9ff',
+            tailSecondary: '#7dd3fc',
+            tailTip: '#38bdf8',
+            auraColor: 'rgba(125, 211, 252, 0.38)',
+            foreheadMark: '#38bdf8',
+            trailColor: '#bae6fd'
+        },
+        {
+            name: "Volpe d'Ametista Ombra",
+            shortName: 'Ametista Ombra',
+            unlockCost: 75,
+            abilityTitle: "🔮 Onda d'Ombra Sbloccata!",
+            abilityDesc: 'Premi il tasto POTERE per distruggere gli ostacoli!',
+            badgeColor: 'text-purple-300',
+            bodyMain: '#9333ea',
+            bodyDark: '#7e22ce',
+            bodyDeep: '#4c1d95',
+            chest: '#f3e8ff',
+            earInner: '#d8b4fe',
+            paws: '#2e1065',
+            eye: '#f0abfc',
+            eyeSparkle: '#ffffff',
+            tailPrimary: '#a855f7',
+            tailSecondary: '#6b21a8',
+            tailTip: '#f5d0fe',
+            auraColor: 'rgba(192, 132, 252, 0.4)',
+            foreheadMark: '#f0abfc',
+            trailColor: '#c084fc'
+        },
+        {
+            name: 'Volpe Cremisi Fuoco Fatuo',
+            shortName: 'Fuoco Fatuo',
+            unlockCost: 105,
+            abilityTitle: '🔥 Fiamma Solare Sbloccata!',
+            abilityDesc: 'Il tasto POTERE lancia sfere di Fuoco Fatuo!',
+            badgeColor: 'text-rose-400',
+            bodyMain: '#e11d48',
+            bodyDark: '#be123c',
+            bodyDeep: '#881337',
+            chest: '#ffe4e6',
+            earInner: '#fda4af',
+            paws: '#1c1917',
+            eye: '#fde047',
+            eyeSparkle: '#ffffff',
+            tailPrimary: '#f43f5e',
+            tailSecondary: '#be123c',
+            tailTip: '#fb923c',
+            auraColor: 'rgba(251, 113, 133, 0.45)',
+            foreheadMark: '#fde047',
+            trailColor: '#fb7185'
+        },
+        {
+            name: 'Volpe Celestiale Astrale',
+            shortName: 'Celestiale Astrale',
+            unlockCost: 140,
+            abilityTitle: '🧲 Magnete Spirituale Attivo!',
+            abilityDesc: 'Attira le sfere d’energia e ricarica più veloce!',
+            badgeColor: 'text-sky-300',
+            bodyMain: '#1e3a8a',
+            bodyDark: '#172554',
+            bodyDeep: '#0f172a',
+            chest: '#e0f2fe',
+            earInner: '#38bdf8',
+            paws: '#020617',
+            eye: '#22d3ee',
+            eyeSparkle: '#ffffff',
+            tailPrimary: '#2563eb',
+            tailSecondary: '#1d4ed8',
+            tailTip: '#22d3ee',
+            auraColor: 'rgba(34, 211, 238, 0.5)',
+            foreheadMark: '#22d3ee',
+            trailColor: '#38bdf8'
+        },
+        {
+            name: 'Kitsune Divina Oro & Platino',
+            shortName: 'Kitsune Divina',
+            unlockCost: 200,
+            abilityTitle: '👑 Furia delle 8 Code!',
+            abilityDesc: 'Ventaglio di 3 Fuochi Fatui! Il Boss si avvicina...',
+            badgeColor: 'text-yellow-300',
+            bodyMain: '#ffffff',
+            bodyDark: '#fef3c7',
+            bodyDeep: '#d97706',
+            chest: '#fffbeb',
+            earInner: '#fbbf24',
+            paws: '#b45309',
+            eye: '#f59e0b',
+            eyeSparkle: '#ffffff',
+            tailPrimary: '#fffbeb',
+            tailSecondary: '#fde68a',
+            tailTip: 'RAINBOW_GOLD',
+            auraColor: 'rgba(253, 224, 71, 0.65)',
+            foreheadMark: '#f59e0b',
+            trailColor: 'DIVINE'
+        }
+    ];
+
+    // Configurazione dei 4 Potenziamenti Permanenti del Santuario
+    const UPGRADE_DEFS = [
+        {
+            id: 'chalice',
+            icon: '🍵',
+            name: 'Calice Vitale',
+            desc: '+1 Scudo Vitale all’avvio della corsa (fino a 5 cariche!)',
+            baseCost: 20,
+            costStep: 20,
+            maxLevel: 5
+        },
+        {
+            id: 'flame',
+            icon: '🔥',
+            name: 'Fiamma Arcana',
+            desc: '-10% ricarica abilità e +15% danni contro il Boss per livello',
+            baseCost: 25,
+            costStep: 25,
+            maxLevel: 5
+        },
+        {
+            id: 'magnet',
+            icon: '🧲',
+            name: 'Calamita Spirituale',
+            desc: 'Attira le Sfere da subito e +20% valuta Sfere per livello',
+            baseCost: 20,
+            costStep: 20,
+            maxLevel: 5
+        },
+        {
+            id: 'wind',
+            icon: '🍃',
+            name: 'Slancio del Vento',
+            desc: 'Inizi con +65 punti per livello (partenza rapida verso nuove code!)',
+            baseCost: 30,
+            costStep: 30,
+            maxLevel: 5
+        }
+    ];
+
+    // Palette colori del cielo dal Livello 1 al Livello 8
+    const LEVEL_THEMES = [
+        { skyTop: '#38bdf8', skyBottom: '#bae6fd', mountainFar: '#7dd3fc', mountainNear: '#0284c7', groundTop: '#4ade80', groundSoil: '#854d0e', stars: 0 },
+        { skyTop: '#0ea5e9', skyBottom: '#e0f2fe', mountainFar: '#60a5fa', mountainNear: '#1d4ed8', groundTop: '#22c55e', groundSoil: '#713f12', stars: 0 },
+        { skyTop: '#f59e0b', skyBottom: '#fef08a', mountainFar: '#fb923c', mountainNear: '#b45309', groundTop: '#65a30d', groundSoil: '#713f12', stars: 0.1 },
+        { skyTop: '#ea580c', skyBottom: '#fed7aa', mountainFar: '#f97316', mountainNear: '#9a3412', groundTop: '#4d7c0f', groundSoil: '#5c2d0c', stars: 0.25 },
+        { skyTop: '#be185d', skyBottom: '#fbcfe8', mountainFar: '#9d174d', mountainNear: '#500724', groundTop: '#15803d', groundSoil: '#451a03', stars: 0.45 },
+        { skyTop: '#4c1d95', skyBottom: '#c4b5fd', mountainFar: '#5b21b6', mountainNear: '#2e1065', groundTop: '#166534', groundSoil: '#3b1502', stars: 0.7 },
+        { skyTop: '#1e1b4b', skyBottom: '#4338ca', mountainFar: '#312e81', mountainNear: '#1e1b4b', groundTop: '#14532d', groundSoil: '#290f02', stars: 0.9 },
+        { skyTop: '#090d16', skyBottom: '#1e1b4b', mountainFar: '#1e293b', mountainNear: '#0f172a', groundTop: '#064e3b', groundSoil: '#1c0a00', stars: 1.0 }
+    ];
+
+    const BOSS_THEME = {
+        skyTop: '#18051d',
+        skyBottom: '#6b1229',
+        mountainFar: '#3b0724',
+        mountainNear: '#1f0414',
+        groundTop: '#581c87',
+        groundSoil: '#1e0814',
+        stars: 1.0
+    };
+
+    // --- DATI PERSISTENTI DEL SANTUARIO (localStorage) ---
+    let highScore = parseInt(localStorage.getItem('foxRunnerHighScore') || '0', 10);
+    let spiritOrbsTotal = parseInt(localStorage.getItem('foxRunnerOrbs') || '0', 10);
+    let bossKillsTotal = parseInt(localStorage.getItem('foxRunnerBossKills') || '0', 10);
+
+    let unlockedSkins = [true, false, false, false, false, false, false, false];
+    try {
+        const savedSkins = JSON.parse(localStorage.getItem('foxRunnerUnlockedSkins'));
+        if (Array.isArray(savedSkins) && savedSkins.length === 8) {
+            unlockedSkins = savedSkins;
+            unlockedSkins[0] = true;
+        }
+    } catch (e) {}
+
+    // -1 = Evoluzione Dinamica (cambia forma ad ogni livello), 0..7 = Skin leggendaria fissa
+    let selectedSkinIndex = parseInt(localStorage.getItem('foxRunnerSelectedSkin') || '-1', 10);
+    if (selectedSkinIndex >= 0 && !unlockedSkins[selectedSkinIndex]) {
+        selectedSkinIndex = -1;
+    }
+
+    let upgrades = { chalice: 0, flame: 0, magnet: 0, wind: 0 };
+    try {
+        const savedUpg = JSON.parse(localStorage.getItem('foxRunnerUpgrades'));
+        if (savedUpg && typeof savedUpg === 'object') {
+            upgrades = {
+                chalice: Math.min(5, Math.max(0, savedUpg.chalice || 0)),
+                flame: Math.min(5, Math.max(0, savedUpg.flame || 0)),
+                magnet: Math.min(5, Math.max(0, savedUpg.magnet || 0)),
+                wind: Math.min(5, Math.max(0, savedUpg.wind || 0))
+            };
+        }
+    } catch (e) {}
+
+    function saveSanctuaryProgress() {
+        localStorage.setItem('foxRunnerHighScore', String(highScore));
+        localStorage.setItem('foxRunnerOrbs', String(spiritOrbsTotal));
+        localStorage.setItem('foxRunnerBossKills', String(bossKillsTotal));
+        localStorage.setItem('foxRunnerUnlockedSkins', JSON.stringify(unlockedSkins));
+        localStorage.setItem('foxRunnerSelectedSkin', String(selectedSkinIndex));
+        localStorage.setItem('foxRunnerUpgrades', JSON.stringify(upgrades));
+    }
+
+    // --- STATO DEL GIOCO ---
+    let gameState = 'LOBBY'; // 'LOBBY', 'PLAYING', 'PAUSED', 'GAMEOVER', 'VICTORY'
+    let previousStateBeforeModal = 'LOBBY';
+    let activeLobbyTab = 'aspect';
+    let width = 0;
+    let height = 0;
+    let groundY = 0;
+
+    let score = 0;
+    let runOrbsEarned = 0;
+    let level = 1; // Da 1 a 8
+    let ngPlusMultiplier = 1;
+    let bossDefeatedInRun = false;
+    let runStartTime = 0;
+    let elapsedRunSeconds = 0;
+
+    let gameSpeed = 0;
+    let baseSpeed = 0;
+    let frameCount = 0;
+    let lastTime = 0;
+    let screenShake = 0;
+
+    // --- STATO VOLPE E ABILITÀ ---
+    const fox = {
+        x: 60,
+        y: 0,
+        width: 44,
+        height: 36,
+        vy: 0,
+        gravity: 0.68,
+        jumpForce: -13.0,
+        isGrounded: true,
+        isJumping: false,
+        isHoldingTouch: false,
+        jumpCount: 0,
+        jumpHoldTimer: 0,
+        maxJumpHold: 11,
+        runCycle: 0,
+        squashX: 1,
+        squashY: 1,
+        blinkTimer: 0,
+        isBlinking: false,
+        // Abilità & Cariche Scudo (Calice Vitale)
+        shieldCharges: 0,
+        invulnTimer: 0,
+        skillCooldown: 0,
+        skillMaxCooldown: 240,
+        dashWaveTimer: 0
+    };
+
+    // --- STATO BOSS FINALE (DRAGO DELL'ECLISSI) ---
+    const boss = {
+        active: false,
+        x: 0,
+        y: 0,
+        targetX: 0,
+        hp: 100,
+        maxHp: 100,
+        attackTimer: 0,
+        attackPattern: 0,
+        hitFlash: 0,
+        hoverPhase: 0,
+        telegraphTimer: 0,
+        pendingMeteorX: null
+    };
+
+    let obstacles = [];
+    let obstacleTimer = 0;
+    let nextObstacleInterval = 85;
+
+    let spiritOrbs = [];
+    let orbTimer = 0;
+
+    let playerProjectiles = [];
+    let bossProjectiles = [];
+    let particles = [];
+    let floatingTexts = [];
+
+    let clouds = [];
+    let stars = [];
+    let mountainsFar = [];
+    let mountainsNear = [];
+    let toriiGates = [];
+    let groundDetails = [];
+
+    // --- HELPER FORMA ATTUALE (IN LOBBY E IN CORSA) ---
+    function getCurrentForm() {
+        if (gameState === 'LOBBY') {
+            if (selectedSkinIndex >= 0) {
+                return FOX_FORMS[selectedSkinIndex];
+            }
+            // In anteprima dinamica nella lobby mostra una rotazione lenta o la forma più alta sbloccata
+            const highestUnlocked = unlockedSkins.lastIndexOf(true);
+            return FOX_FORMS[Math.max(0, highestUnlocked)];
+        }
+
+        if (selectedSkinIndex >= 0) {
+            return FOX_FORMS[selectedSkinIndex];
+        }
+        return FOX_FORMS[Math.min(level - 1, FOX_FORMS.length - 1)];
+    }
+
+    function getDisplayTailsCount() {
+        if (gameState === 'LOBBY') {
+            if (selectedSkinIndex >= 0) return selectedSkinIndex + 1;
+            const highestUnlocked = unlockedSkins.lastIndexOf(true);
+            return Math.max(1, highestUnlocked + 1);
+        }
+        return level;
+    }
+
+    // --- LOGICA UI MINI LOBBY (SANTUARIO) ---
+    function switchLobbyTab(tabName) {
+        activeLobbyTab = tabName;
+        playSound('ui');
+
+        lobbyTabBtns.forEach(btn => {
+            const isTarget = btn.dataset.tab === tabName;
+            if (isTarget) {
+                btn.className = 'lobby-tab-btn bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-extrabold text-[11px] sm:text-xs py-2 px-2 rounded-xl transition cursor-pointer shadow';
+            } else {
+                btn.className = 'lobby-tab-btn text-slate-300 hover:text-white font-extrabold text-[11px] sm:text-xs py-2 px-2 rounded-xl transition cursor-pointer';
+            }
+        });
+
+        tabContentAspect.classList.toggle('hidden', tabName !== 'aspect');
+        tabContentUpgrades.classList.toggle('hidden', tabName !== 'upgrades');
+        tabContentBestiary.classList.toggle('hidden', tabName !== 'bestiary');
+    }
+
+    lobbyTabBtns.forEach(btn => {
+        btn.addEventListener('click', () => switchLobbyTab(btn.dataset.tab));
+    });
+
+    selectDynamicSkinBtn.addEventListener('click', () => {
+        initAudio();
+        playSound('ui');
+        selectedSkinIndex = -1;
+        saveSanctuaryProgress();
+        renderLobbyUI();
+    });
+
+    function renderLobbyUI() {
+        lobbyHighscoreEl.textContent = String(highScore).padStart(5, '0');
+        lobbyOrbsCountEl.textContent = spiritOrbsTotal;
+        lobbyBossKillsEl.textContent = `${bossKillsTotal}x`;
+
+        // Etichetta anteprima sopra la volpe al centro
+        if (selectedSkinIndex === -1) {
+            lobbyPreviewLabel.textContent = '🦊 Aspetto: Evoluzione Dinamica (1→8 Code)';
+            skinModeDesc.textContent = 'Cambia aspetto ad ogni livello';
+            selectDynamicSkinBtn.className = 'bg-amber-400 text-slate-950 font-bold text-[10px] sm:text-xs px-2.5 py-1.5 rounded-lg shadow transition cursor-pointer shrink-0';
+        } else {
+            const chosen = FOX_FORMS[selectedSkinIndex];
+            lobbyPreviewLabel.textContent = `✨ Skin Equipaggiata: ${chosen.name}`;
+            skinModeDesc.textContent = `Fissa su ${chosen.shortName}`;
+            selectDynamicSkinBtn.className = 'bg-slate-700 hover:bg-slate-600 text-amber-300 font-bold text-[10px] sm:text-xs px-2.5 py-1.5 rounded-lg transition cursor-pointer shrink-0';
+        }
+
+        // 1. Griglia 8 Skin Leggendarie
+        lobbySkinsGrid.innerHTML = '';
+        FOX_FORMS.forEach((form, idx) => {
+            const isUnlocked = unlockedSkins[idx];
+            const isEquipped = selectedSkinIndex === idx;
+            const canAfford = spiritOrbsTotal >= form.unlockCost;
+
+            const card = document.createElement('button');
+            card.className = `p-2 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer active:scale-95 ${
+                isEquipped
+                    ? 'bg-amber-500/25 border-amber-400 shadow-md'
+                    : isUnlocked
+                        ? 'bg-slate-800/85 hover:bg-slate-800 border-slate-700'
+                        : 'bg-slate-950/75 border-slate-800 opacity-90'
+            }`;
+
+            const swatchStyle = form.tailTip === 'RAINBOW_GOLD'
+                ? 'background: linear-gradient(135deg, #ffffff, #fde047, #f472b6, #38bdf8);'
+                : `background: linear-gradient(135deg, ${form.bodyMain} 55%, ${form.tailTip} 100%);`;
+
+            let statusHtml = '';
+            if (isEquipped) {
+                statusHtml = '<span class="text-[9px] font-extrabold text-amber-300">✓ IN USO</span>';
+            } else if (isUnlocked) {
+                statusHtml = '<span class="text-[9px] font-bold text-emerald-400">SBLOCCATA</span>';
+            } else {
+                statusHtml = `<span class="text-[9px] font-extrabold ${canAfford ? 'text-sky-300' : 'text-slate-400'}">🔮 ${form.unlockCost}</span>`;
+            }
+
+            card.innerHTML = `
+                <div class="flex items-center justify-between gap-1 w-full">
+                    <span class="w-4 h-4 rounded-full border border-white/40 shrink-0" style="${swatchStyle}"></span>
+                    <span class="text-[9px] font-pixel text-slate-400">${idx + 1}C</span>
+                </div>
+                <div class="text-[10px] font-extrabold text-white truncate w-full mt-1">${form.shortName}</div>
+                <div class="mt-0.5">${statusHtml}</div>
+            `;
+
+            card.addEventListener('click', () => {
+                initAudio();
+                if (isUnlocked) {
+                    playSound('ui');
+                    selectedSkinIndex = idx;
+                    saveSanctuaryProgress();
+                    renderLobbyUI();
+                } else if (canAfford) {
+                    spiritOrbsTotal -= form.unlockCost;
+                    unlockedSkins[idx] = true;
+                    selectedSkinIndex = idx;
+                    playSound('upgrade');
+                    saveSanctuaryProgress();
+                    renderLobbyUI();
+                } else {
+                    playSound('hit');
+                }
+            });
+
+            lobbySkinsGrid.appendChild(card);
+        });
+
+        // 2. Griglia 4 Potenziamenti Permanenti
+        tabContentUpgrades.innerHTML = '';
+        UPGRADE_DEFS.forEach(upg => {
+            const curLvl = upgrades[upg.id] || 0;
+            const isMax = curLvl >= upg.maxLevel;
+            const cost = upg.baseCost + curLvl * upg.costStep;
+            const canAfford = !isMax && spiritOrbsTotal >= cost;
+
+            const item = document.createElement('div');
+            item.className = 'bg-slate-800/85 border border-slate-700/80 rounded-2xl p-2.5 flex items-center justify-between gap-2';
+
+            // Pallini livello potenziamento
+            let pips = '';
+            for (let p = 1; p <= upg.maxLevel; p++) {
+                pips += `<span class="w-2.5 h-1.5 rounded-full ${p <= curLvl ? 'bg-amber-400' : 'bg-slate-700'}"></span>`;
+            }
+
+            item.innerHTML = `
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-sm">${upg.icon}</span>
+                        <span class="text-xs font-extrabold text-white truncate">${upg.name}</span>
+                    </div>
+                    <div class="text-[10px] text-slate-300 leading-tight mt-0.5">${upg.desc}</div>
+                    <div class="flex items-center gap-1 mt-1.5">${pips}</div>
+                </div>
+                <button class="upg-buy-btn shrink-0 px-2.5 py-2 rounded-xl font-extrabold text-[10px] transition cursor-pointer active:scale-95 ${
+                    isMax
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : canAfford
+                            ? 'bg-gradient-to-r from-sky-400 to-cyan-300 text-slate-950 shadow'
+                            : 'bg-slate-900 text-slate-500 border border-slate-700'
+                }">
+                    ${isMax ? 'MAX' : `🔮 ${cost}`}
+                </button>
+            `;
+
+            const buyBtn = item.querySelector('.upg-buy-btn');
+            buyBtn.addEventListener('click', () => {
+                initAudio();
+                if (!isMax && spiritOrbsTotal >= cost) {
+                    spiritOrbsTotal -= cost;
+                    upgrades[upg.id] = curLvl + 1;
+                    playSound('upgrade');
+                    saveSanctuaryProgress();
+                    renderLobbyUI();
+                } else {
+                    playSound('hit');
+                }
+            });
+
+            tabContentUpgrades.appendChild(item);
+        });
+
+        // 3. Lista Poteri nel Bestiario
+        lobbyPowersList.innerHTML = '';
+        FOX_FORMS.forEach((form, idx) => {
+            const row = document.createElement('div');
+            row.className = 'bg-slate-800/80 border border-slate-700/70 rounded-xl p-2 flex items-start gap-2';
+            row.innerHTML = `
+                <span class="font-pixel text-[9px] text-amber-400 bg-slate-950 px-1.5 py-1 rounded shrink-0">Lv.${idx + 1}</span>
+                <div class="min-w-0">
+                    <div class="font-bold text-white text-[11px] truncate">${form.abilityTitle}</div>
+                    <div class="text-[10px] text-slate-300 leading-tight">${form.abilityDesc}</div>
+                </div>
+            `;
+            lobbyPowersList.appendChild(row);
+        });
+    }
+
+    function returnToLobby() {
+        playSound('ui');
+        boss.active = false;
+        bossHud.classList.add('hidden');
+        hudEl.classList.add('hidden');
+        skillActionBtn.classList.add('hidden');
+        gameoverScreen.classList.add('hidden');
+        victoryScreen.classList.add('hidden');
+        levelBanner.classList.add('hidden');
+
+        obstacles = [];
+        spiritOrbs = [];
+        playerProjectiles = [];
+        bossProjectiles = [];
+        particles = [];
+        floatingTexts = [];
+
+        gameState = 'LOBBY';
+        fox.isGrounded = true;
+        fox.vy = 0;
+        fox.y = groundY - fox.height;
+        fox.shieldCharges = upgrades.chalice > 0 ? 1 : 0;
+
+        lobbyScreen.classList.remove('hidden');
+        renderLobbyUI();
+        resizeCanvas();
+    }
+
+    gameoverLobbyBtn.addEventListener('click', returnToLobby);
+    victoryLobbyBtn.addEventListener('click', returnToLobby);
+
+    // --- INIZIALIZZAZIONE HUD IN CORSA ---
+    function renderTailIcons() {
+        const form = getCurrentForm();
+        tailsIconsContainer.innerHTML = '';
+        for (let i = 1; i <= MAX_TAILS; i++) {
+            const active = i <= level;
+            const badge = document.createElement('div');
+            badge.className = `h-2 flex-1 rounded-full transition-all duration-300 ${
+                active ? 'shadow-sm scale-y-110' : 'bg-slate-700/70'
+            }`;
+            if (active) {
+                badge.style.background = (level === MAX_TAILS || selectedSkinIndex === 7)
+                    ? 'linear-gradient(90deg, #fde047, #f472b6, #38bdf8, #fde047)'
+                    : `linear-gradient(90deg, ${form.bodyMain}, ${form.tailTip === 'RAINBOW_GOLD' ? '#fde047' : form.tailTip})`;
+            }
+            tailsIconsContainer.appendChild(badge);
+        }
+
+        hudLevel.textContent = `LVL ${level}`;
+        hudLevel.className = `font-pixel text-xs sm:text-sm ${form.badgeColor}`;
+        hudTailsText.textContent = level === MAX_TAILS ? '8/8 Code (SUPREMA)' : `${level}/8 Code`;
+        hudFormName.textContent = form.name;
+        hudFormName.className = `text-[11px] sm:text-xs font-extrabold truncate mt-0.5 ${form.badgeColor}`;
+
+        renderAbilityBadges();
+
+        if (level >= 5 && (gameState === 'PLAYING' || gameState === 'PAUSED')) {
+            skillActionBtn.classList.remove('hidden');
+            if (level === 5) {
+                skillBtnIcon.textContent = '🔮';
+                skillBtnLabel.textContent = 'ONDA';
+            } else if (level < 8) {
+                skillBtnIcon.textContent = '🔥';
+                skillBtnLabel.textContent = 'FUOCO';
+            } else {
+                skillBtnIcon.textContent = '👑';
+                skillBtnLabel.textContent = 'FURIA 8';
+            }
+        } else {
+            skillActionBtn.classList.add('hidden');
+        }
+    }
+
+    function renderAbilityBadges() {
+        const badges = [];
+        if (level >= 2) badges.push('<span class="text-[9px] sm:text-[10px] bg-amber-500/20 text-amber-200 px-1.5 py-0.5 rounded border border-amber-400/40">🪽 2x Salto</span>');
+        if (fox.shieldCharges > 0) {
+            badges.push(`<span class="text-[9px] sm:text-[10px] bg-emerald-500/30 text-emerald-200 px-1.5 py-0.5 rounded border border-emerald-400/60 font-bold">🍃 Scudo x${fox.shieldCharges}</span>`);
+        } else if (level >= 3 || upgrades.chalice > 0) {
+            badges.push('<span class="text-[9px] sm:text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">🍃 Scudo 0</span>');
+        }
+        if (level >= 4) badges.push('<span class="text-[9px] sm:text-[10px] bg-cyan-500/20 text-cyan-200 px-1.5 py-0.5 rounded border border-cyan-400/40">❄️ Planata</span>');
+        if (level >= 5) badges.push('<span class="text-[9px] sm:text-[10px] bg-rose-500/20 text-rose-200 px-1.5 py-0.5 rounded border border-rose-400/40">🔥 Potere</span>');
+        if (level >= 7 || upgrades.magnet > 0) badges.push('<span class="text-[9px] sm:text-[10px] bg-sky-500/20 text-sky-200 px-1.5 py-0.5 rounded border border-sky-400/40">🧲 Magnete</span>');
+        if (badges.length === 0) {
+            badges.push('<span class="text-[9px] sm:text-[10px] bg-slate-800/90 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">🏃 Corsa Agile</span>');
+        }
+        hudAbilitiesBadges.innerHTML = badges.join('');
+    }
+
+    function updateHUD() {
+        const displayScore = Math.floor(score);
+        hudScore.textContent = String(displayScore).padStart(5, '0');
+        hudHighscore.textContent = String(highScore).padStart(5, '0');
+        hudRunOrbs.textContent = runOrbsEarned;
+
+        const lv8Threshold = (MAX_TAILS - 1) * POINTS_PER_LEVEL;
+
+        if (level < MAX_TAILS) {
+            const prevThreshold = (level - 1) * POINTS_PER_LEVEL;
+            const progress = ((score - prevThreshold) / POINTS_PER_LEVEL) * 100;
+            levelProgressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+        } else if (!boss.active && !bossDefeatedInRun) {
+            const progressToBoss = ((score - lv8Threshold) / BOSS_TRIGGER_OFFSET) * 100;
+            levelProgressBar.style.width = `${Math.min(100, Math.max(0, progressToBoss))}%`;
+        } else {
+            levelProgressBar.style.width = '100%';
+        }
+
+        if (level >= 5) {
+            if (fox.skillCooldown > 0) {
+                skillCooldownOverlay.classList.remove('hidden');
+                skillCooldownOverlay.textContent = `${(fox.skillCooldown / 60).toFixed(1)}s`;
+                skillActionBtn.classList.remove('skill-ready');
+            } else {
+                skillCooldownOverlay.classList.add('hidden');
+                skillActionBtn.classList.add('skill-ready');
+            }
+        }
+    }
+
+    // --- RIDIMENSIONAMENTO RESPONSIVE ---
+    function resizeCanvas() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = window.innerWidth;
+        height = window.innerHeight;
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        if (gameState === 'LOBBY') {
+            // Nella Mini Lobby, posiziona il terreno a metà schermo sopra il pannello inferiore e la volpe al centro
+            groundY = Math.round(height * 0.50);
+            fox.x = Math.round(width * 0.5 - fox.width * 0.25);
+            fox.y = groundY - fox.height;
+        } else {
+            groundY = Math.round(height * 0.76);
+            fox.x = Math.max(72, Math.min(width * 0.18, 150));
+            if (fox.isGrounded) {
+                fox.y = groundY - fox.height;
+            }
+        }
+
+        if (boss.active) {
+            boss.targetX = width - Math.min(130, width * 0.24);
+            boss.x = boss.targetX;
+        }
+
+        baseSpeed = Math.max(5.8, Math.min(width * 0.0085, 8.2));
+        if (gameState !== 'PLAYING') {
+            gameSpeed = baseSpeed * 0.45;
+        }
+
+        initBackgroundElements();
+    }
+
+    function initBackgroundElements() {
+        stars = [];
+        for (let i = 0; i < 45; i++) {
+            stars.push({
+                x: Math.random() * width,
+                y: Math.random() * (groundY * 0.65),
+                size: Math.random() < 0.7 ? 2 : 3,
+                twinkle: Math.random() * Math.PI * 2
+            });
+        }
+
+        clouds = [];
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: (width / 4) * i + Math.random() * 80,
+                y: groundY * (0.15 + Math.random() * 0.28),
+                w: 54 + Math.random() * 40,
+                speed: 0.4 + Math.random() * 0.4
+            });
+        }
+
+        mountainsFar = [];
+        let mx = -50;
+        while (mx < width + 250) {
+            const mw = 140 + Math.random() * 120;
+            const mh = 75 + Math.random() * 65;
+            mountainsFar.push({ x: mx, w: mw, h: mh });
+            mx += mw * 0.72;
+        }
+
+        mountainsNear = [];
+        mx = -50;
+        while (mx < width + 250) {
+            const mw = 100 + Math.random() * 90;
+            const mh = 45 + Math.random() * 45;
+            mountainsNear.push({ x: mx, w: mw, h: mh });
+            mx += mw * 0.75;
+        }
+
+        toriiGates = [
+            { x: width * 0.22, scale: 0.85 },
+            { x: width * 0.78, scale: 0.85 }
+        ];
+
+        groundDetails = [];
+        for (let i = 0; i < Math.ceil(width / 28) + 4; i++) {
+            groundDetails.push({
+                x: i * 28,
+                type: i % 3 === 0 ? 'grass' : 'pebble',
+                offset: Math.random() * 14
+            });
+        }
+    }
+
+    // --- GESTIONE CONTROLLI (SALTO, DOPPIO SALTO, PLANATA E ATTACCO) ---
+    function handleJumpInputStart() {
+        if (gameState !== 'PLAYING') return;
+        fox.isHoldingTouch = true;
+
+        const maxJumps = level >= 2 ? 2 : 1;
+
+        if (fox.isGrounded) {
+            fox.vy = fox.jumpForce;
+            fox.isGrounded = false;
+            fox.isJumping = true;
+            fox.jumpCount = 1;
+            fox.jumpHoldTimer = 0;
+            fox.squashX = 0.82;
+            fox.squashY = 1.22;
+            spawnJumpDust('#fef3c7');
+            playSound('jump');
+        } else if (fox.jumpCount < maxJumps) {
+            fox.vy = fox.jumpForce * 0.92;
+            fox.isJumping = true;
+            fox.jumpCount++;
+            fox.jumpHoldTimer = 0;
+            fox.squashX = 0.85;
+            fox.squashY = 1.2;
+            spawnJumpDust('#fde047');
+            spawnFloatingText(fox.x, fox.y - 10, '2x SALTO!', '#fde047');
+            playSound('doublejump');
+        }
+    }
+
+    function handleJumpInputEnd() {
+        fox.isJumping = false;
+        fox.isHoldingTouch = false;
+    }
+
+    // Attivazione Abilità Speciale Offensiva (Lv.5+) potenziata da Fiamma Arcana
+    function triggerSpecialSkill() {
+        if (gameState !== 'PLAYING' || level < 5 || fox.skillCooldown > 0) return;
+
+        const baseCd = level >= 7 ? 175 : 230;
+        const cdrFactor = Math.max(0.45, 1 - upgrades.flame * 0.1);
+        const dmgMult = 1 + upgrades.flame * 0.15;
+
+        fox.skillCooldown = Math.round(baseCd * cdrFactor);
+        fox.dashWaveTimer = 18;
+        screenShake = 6;
+        playSound('fireball');
+
+        if (level === 5) {
+            playerProjectiles.push({
+                type: 'shadow_wave',
+                x: fox.x + fox.width,
+                y: fox.y - 6,
+                vx: 11,
+                vy: 0,
+                radius: 26,
+                damage: Math.round(14 * dmgMult),
+                life: 28,
+                color: '#c084fc'
+            });
+            spawnFloatingText(fox.x + 10, fox.y - 14, "ONDA D'OMBRA!", '#d8b4fe');
+        } else if (level < 8) {
+            playerProjectiles.push({
+                type: 'foxfire',
+                x: fox.x + fox.width + 6,
+                y: fox.y + fox.height * 0.45,
+                vx: 13.5,
+                vy: 0,
+                radius: 14,
+                damage: Math.round((level >= 7 ? 22 : 18) * dmgMult),
+                life: 95,
+                color: level >= 7 ? '#38bdf8' : '#fb7185'
+            });
+            spawnFloatingText(fox.x + 10, fox.y - 14, 'FUOCO FATUO!', '#fda4af');
+        } else {
+            const angles = [-0.14, 0, 0.14];
+            angles.forEach((ang) => {
+                playerProjectiles.push({
+                    type: 'divine_fire',
+                    x: fox.x + fox.width + 8,
+                    y: fox.y + fox.height * 0.45,
+                    vx: Math.cos(ang) * 14.5,
+                    vy: Math.sin(ang) * 14.5,
+                    radius: 15,
+                    damage: Math.round(11 * dmgMult),
+                    life: 100,
+                    color: '#fde047'
+                });
+            });
+            spawnFloatingText(fox.x + 10, fox.y - 16, 'FURIA DELLE 8 CODE!', '#fde047');
+        }
+    }
+
+    // Eventi Touch su schermo
+    window.addEventListener('touchstart', (e) => {
+        if (e.target.closest('button') || e.target.closest('#lobby-screen')) return;
+        initAudio();
+        if (gameState === 'PLAYING') {
+            e.preventDefault();
+            handleJumpInputStart();
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchend', (e) => {
+        if (e.target.closest('button') || e.target.closest('#lobby-screen')) return;
+        handleJumpInputEnd();
+    });
+
+    // Eventi Mouse
+    window.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button') || e.target.closest('#lobby-screen')) return;
+        initAudio();
+        if (gameState === 'PLAYING') {
+            handleJumpInputStart();
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        handleJumpInputEnd();
+    });
+
+    // Pulsante Azione Touch
+    skillActionBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        initAudio();
+        triggerSpecialSkill();
+    }, { passive: false });
+
+    skillActionBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        initAudio();
+        triggerSpecialSkill();
+    });
+
+    // Eventi Tastiera
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+            e.preventDefault();
+            initAudio();
+            if (gameState === 'LOBBY' || gameState === 'GAMEOVER') {
+                startGame(false);
+            } else if (gameState === 'PLAYING' && !e.repeat) {
+                handleJumpInputStart();
+            }
+        } else if (e.code === 'KeyF' || e.code === 'Enter' || e.code === 'ArrowRight') {
+            if (gameState === 'PLAYING' && !e.repeat) {
+                initAudio();
+                triggerSpecialSkill();
+            }
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+            handleJumpInputEnd();
+        }
+    });
+
+    // Gestione Modale Abilità in corsa
+    function openSkillsModal() {
+        if (gameState === 'PLAYING') {
+            previousStateBeforeModal = 'PLAYING';
+            gameState = 'PAUSED';
+        } else {
+            previousStateBeforeModal = gameState;
+        }
+        skillsModal.classList.remove('hidden');
+    }
+
+    function hideSkillsModal() {
+        skillsModal.classList.add('hidden');
+        if (previousStateBeforeModal === 'PLAYING') {
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+        }
+    }
+
+    skillsGuideBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSkillsModal();
+    });
+    closeSkillsModal.addEventListener('click', hideSkillsModal);
+    resumeFromModalBtn.addEventListener('click', hideSkillsModal);
+
+    startBtn.addEventListener('click', () => {
+        initAudio();
+        startGame(false);
+    });
+
+    restartBtn.addEventListener('click', () => {
+        initAudio();
+        startGame(false);
+    });
+
+    victoryRestartBtn.addEventListener('click', () => {
+        initAudio();
+        startGame(false);
+    });
+
+    ngplusBtn.addEventListener('click', () => {
+        initAudio();
+        startGame(true);
+    });
+
+    // --- AVVIO E RESET PARTITA ---
+    function startGame(isNgPlus) {
+        if (isNgPlus) {
+            ngPlusMultiplier *= 2;
+            ngPlusBadge.classList.remove('hidden');
+            ngPlusBadge.textContent = `✨ NG+ x${ngPlusMultiplier}`;
+            level = MAX_TAILS;
+            bossDefeatedInRun = true;
+            fox.shieldCharges = Math.max(fox.shieldCharges, 1 + upgrades.chalice);
+        } else {
+            // Bonus Slancio del Vento (+65 pt per livello potenziamento)
+            score = upgrades.wind * 65;
+            level = Math.min(MAX_TAILS, Math.floor(score / POINTS_PER_LEVEL) + 1);
+            runOrbsEarned = 0;
+            ngPlusMultiplier = 1;
+            ngPlusBadge.classList.add('hidden');
+            bossDefeatedInRun = false;
+
+            // Bonus Calice Vitale (+1 Scudo iniziale per livello) + eventuale Lv.3 iniziale
+            fox.shieldCharges = upgrades.chalice + (level >= 3 ? 1 : 0);
+            runStartTime = performance.now();
+
+            // Sblocca permanentemente eventuali forme raggiunte allo start
+            for (let k = 0; k < level; k++) {
+                unlockedSkins[k] = true;
+            }
+            saveSanctuaryProgress();
+        }
+
+        gameState = 'PLAYING';
+        resizeCanvas();
+        gameSpeed = baseSpeed;
+
+        obstacles = [];
+        spiritOrbs = [];
+        playerProjectiles = [];
+        bossProjectiles = [];
+        particles = [];
+        floatingTexts = [];
+        obstacleTimer = 0;
+        orbTimer = 0;
+        nextObstacleInterval = 75;
+
+        boss.active = false;
+        boss.hp = boss.maxHp;
+        bossHud.classList.add('hidden');
+
+        fox.y = groundY - fox.height;
+        fox.vy = 0;
+        fox.isGrounded = true;
+        fox.isJumping = false;
+        fox.isHoldingTouch = false;
+        fox.jumpCount = 0;
+        fox.invulnTimer = 0;
+        fox.skillCooldown = 0;
+        fox.dashWaveTimer = 0;
+        fox.squashX = 1;
+        fox.squashY = 1;
+
+        lobbyScreen.classList.add('hidden');
+        gameoverScreen.classList.add('hidden');
+        victoryScreen.classList.add('hidden');
+        levelBanner.classList.add('hidden');
+        levelBanner.classList.remove('level-banner-active');
+        hudEl.classList.remove('hidden');
+
+        renderTailIcons();
+        updateHUD();
+        lastTime = performance.now();
+    }
+
+    function showBanner(title, subtitle, abilityText, gradientClasses) {
+        bannerTitle.textContent = title;
+        bannerSubtitle.textContent = subtitle;
+        if (abilityText) {
+            bannerAbility.textContent = abilityText;
+            bannerAbility.classList.remove('hidden');
+        } else {
+            bannerAbility.classList.add('hidden');
+        }
+
+        levelBanner.className = `pointer-events-none absolute top-32 sm:top-36 left-1/2 -translate-x-1/2 z-20 text-white px-5 py-3 rounded-2xl shadow-2xl border-2 text-center w-[92%] max-w-md ${gradientClasses}`;
+        void levelBanner.offsetWidth;
+        levelBanner.classList.add('level-banner-active');
+    }
+
+    function triggerLevelUp(newLevel) {
+        level = newLevel;
+
+        // Sblocca permanentemente la forma nel Santuario!
+        if (!unlockedSkins[level - 1]) {
+            unlockedSkins[level - 1] = true;
+            saveSanctuaryProgress();
+        }
+
+        const form = getCurrentForm();
+        playSound('levelup');
+
+        // Dal Lv.3 aggiunge/ricarica almeno 1 carica di Scudo di Foglie
+        if (level >= 3) {
+            fox.shieldCharges = Math.max(fox.shieldCharges, 1);
+        }
+
+        renderTailIcons();
+
+        const burstColors = level === MAX_TAILS
+            ? ['#fde047', '#ffffff', '#f472b6', '#38bdf8', '#fb923c']
+            : [form.bodyMain, form.tailTip, '#ffffff', '#fbbf24'];
+
+        for (let i = 0; i < 42; i++) {
+            const angle = (Math.PI * 2 * i) / 42;
+            const speed = 2.2 + Math.random() * 5.8;
+            particles.push({
+                x: fox.x + fox.width * 0.4,
+                y: fox.y + fox.height * 0.5,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1.5,
+                size: 3 + Math.random() * 4.5,
+                color: burstColors[i % burstColors.length],
+                life: 1.15,
+                decay: 0.018 + Math.random() * 0.015
+            });
+        }
+
+        const levelAbilityInfo = FOX_FORMS[level - 1].abilityTitle;
+        showBanner(
+            level === MAX_TAILS ? 'FORMA SUPREMA (8 CODE)!' : `LIVELLO ${level} — NUOVA CODA!`,
+            `✨ ${form.name} (${level}/8)`,
+            levelAbilityInfo,
+            'bg-gradient-to-r from-orange-600 via-amber-500 to-orange-600 border-yellow-200'
+        );
+    }
+
+    // --- AVVIO BOSS FIGHT FINALE ---
+    function startBossFight() {
+        boss.active = true;
+        boss.hp = boss.maxHp;
+        boss.x = width + 140;
+        boss.targetX = width - Math.min(130, width * 0.24);
+        boss.y = groundY - 115;
+        boss.attackTimer = 60;
+        boss.attackPattern = 0;
+        boss.pendingMeteorX = null;
+
+        obstacles = [];
+        fox.skillCooldown = 0;
+        screenShake = 14;
+        playSound('bossroar');
+
+        bossHud.classList.remove('hidden');
+        updateBossHUD();
+
+        showBanner(
+            '⚠️ BOSS FINALE APPARSO!',
+            "🐉 IL DRAGO DELL'ECLISSI",
+            'Usa FUOCO FATUO o raccogli le SFERE SACRE!',
+            'bg-gradient-to-r from-purple-900 via-rose-800 to-purple-900 border-rose-400'
+        );
+    }
+
+    function updateBossHUD() {
+        const clampedHp = Math.max(0, Math.ceil(boss.hp));
+        bossHpText.textContent = `${clampedHp} / ${boss.maxHp}`;
+        bossHpBar.style.width = `${(clampedHp / boss.maxHp) * 100}%`;
+    }
+
+    function damageBoss(amount, hitX, hitY) {
+        if (!boss.active) return;
+        boss.hp -= amount;
+        boss.hitFlash = 8;
+        screenShake = 7;
+        playSound('bosshit');
+        updateBossHUD();
+
+        spawnFloatingText(hitX || boss.x, hitY || boss.y, `-${amount}`, '#fde047');
+
+        for (let i = 0; i < 18; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const spd = 2 + Math.random() * 5;
+            particles.push({
+                x: hitX || boss.x,
+                y: hitY || boss.y + 40,
+                vx: Math.cos(ang) * spd,
+                vy: Math.sin(ang) * spd,
+                size: 4 + Math.random() * 4,
+                color: i % 2 === 0 ? '#fde047' : '#f43f5e',
+                life: 1,
+                decay: 0.03
+            });
+        }
+
+        if (boss.hp <= 0) {
+            triggerBossVictory();
+        }
+    }
+
+    function triggerBossVictory() {
+        boss.active = false;
+        bossDefeatedInRun = true;
+        bossKillsTotal++;
+        bossHud.classList.add('hidden');
+        bossProjectiles = [];
+        playerProjectiles = [];
+        obstacles = [];
+
+        // Premio Sfere per aver sconfitto il Boss!
+        const bossOrbReward = Math.round((35 + upgrades.magnet * 7) * ngPlusMultiplier);
+        runOrbsEarned += bossOrbReward;
+        spiritOrbsTotal += bossOrbReward;
+
+        score += 500 * ngPlusMultiplier;
+        const finalIntScore = Math.floor(score);
+        if (finalIntScore > highScore) {
+            highScore = finalIntScore;
+        }
+        saveSanctuaryProgress();
+        updateHUD();
+
+        elapsedRunSeconds = Math.floor((performance.now() - runStartTime) / 1000);
+        const mins = String(Math.floor(elapsedRunSeconds / 60)).padStart(2, '0');
+        const secs = String(elapsedRunSeconds % 60).padStart(2, '0');
+
+        victoryScoreEl.textContent = finalIntScore;
+        victoryTimeEl.textContent = `${mins}:${secs}`;
+        victoryEarnedOrbsEl.textContent = `+${runOrbsEarned}`;
+
+        playSound('victory');
+        screenShake = 18;
+        gameState = 'VICTORY';
+        victoryScreen.classList.remove('hidden');
+    }
+
+    function handleFoxDamage() {
+        if (fox.invulnTimer > 0) return;
+
+        if (fox.shieldCharges > 0) {
+            fox.shieldCharges--;
+            fox.invulnTimer = 75;
+            screenShake = 9;
+            playSound('shield');
+            renderAbilityBadges();
+            spawnFloatingText(fox.x, fox.y - 16, `SCUDO! (${fox.shieldCharges} rim.)`, '#34d399');
+
+            for (let i = 0; i < 24; i++) {
+                const ang = (Math.PI * 2 * i) / 24;
+                particles.push({
+                    x: fox.x + fox.width * 0.5,
+                    y: fox.y + fox.height * 0.5,
+                    vx: Math.cos(ang) * 4.5,
+                    vy: Math.sin(ang) * 4.5,
+                    size: 4,
+                    color: '#34d399',
+                    life: 1,
+                    decay: 0.03
+                });
+            }
+            return;
+        }
+
+        triggerGameOver();
+    }
+
+    function triggerGameOver() {
+        gameState = 'GAMEOVER';
+        playSound('hit');
+
+        const finalIntScore = Math.floor(score);
+        let isNewRecord = false;
+        if (finalIntScore > highScore) {
+            highScore = finalIntScore;
+            isNewRecord = true;
+        }
+        saveSanctuaryProgress();
+        updateHUD();
+
+        finalScoreEl.textContent = finalIntScore;
+        finalHighscoreEl.textContent = highScore;
+        finalTailsEl.textContent = `${level}/${MAX_TAILS}`;
+        gameoverEarnedOrbsEl.textContent = `+${runOrbsEarned}`;
+
+        if (boss.active) {
+            gameoverFlavorEl.textContent = "Il Drago dell'Eclissi ti ha colpito! Potenzia la Volpe nel Santuario o usa la planata!";
+        } else if (level === MAX_TAILS) {
+            gameoverFlavorEl.textContent = 'Eri ad un passo dal Boss Finale con tutte e 8 le code!';
+        } else {
+            gameoverFlavorEl.textContent = 'Usa le Sfere raccolte nel Santuario per potenziare la Volpe!';
+        }
+
+        newRecordBadge.classList.toggle('hidden', !isNewRecord);
+        gameoverScreen.classList.remove('hidden');
+    }
+
+    // --- PARTICELLARE & TESTI FLUTTUANTI ---
+    function spawnJumpDust(color) {
+        for (let i = 0; i < 8; i++) {
+            particles.push({
+                x: fox.x + fox.width * 0.4 + (Math.random() - 0.5) * 16,
+                y: fox.y + fox.height - 2,
+                vx: -gameSpeed * 0.3 + (Math.random() - 0.5) * 2,
+                vy: -Math.random() * 2.2,
+                size: 3 + Math.random() * 3,
+                color: color || '#fef3c7',
+                life: 0.8,
+                decay: 0.035
+            });
+        }
+    }
+
+    function spawnFloatingText(x, y, text, color) {
+        floatingTexts.push({
+            x,
+            y,
+            text,
+            color: color || '#ffffff',
+            life: 1.0
+        });
+    }
+
+    // --- GENERAZIONE OSTACOLI E SFERE SPIRITUALI ---
+    function spawnObstacle() {
+        if (boss.active) return;
+
+        const types = ['rock', 'bush', 'log'];
+        if (level >= 3 && Math.random() < 0.3) {
+            types.push('lantern');
+        }
+
+        const type = types[Math.floor(Math.random() * types.length)];
+        let obs = {
+            type,
+            x: width + 40,
+            y: groundY,
+            w: 32,
+            h: 34,
+            animOffset: Math.random() * Math.PI * 2
+        };
+
+        if (type === 'rock') {
+            const doubleRock = level >= 2 && Math.random() < 0.35;
+            obs.w = doubleRock ? 52 : 32;
+            obs.h = doubleRock ? 36 : 30;
+            obs.y = groundY - obs.h;
+            obs.double = doubleRock;
+        } else if (type === 'bush') {
+            obs.w = 42;
+            obs.h = 34;
+            obs.y = groundY - obs.h;
+        } else if (type === 'log') {
+            obs.w = 48;
+            obs.h = 26;
+            obs.y = groundY - obs.h;
+        } else if (type === 'lantern') {
+            obs.w = 28;
+            obs.h = 32;
+            obs.y = groundY - 46;
+        }
+
+        obstacles.push(obs);
+    }
+
+    function spawnSpiritOrb(isSacredBossOrb) {
+        const heights = [groundY - 26, groundY - 68, groundY - 105];
+        const yPos = heights[Math.floor(Math.random() * heights.length)];
+        spiritOrbs.push({
+            x: width + 30,
+            y: yPos,
+            radius: isSacredBossOrb ? 13 : 10,
+            sacred: isSacredBossOrb,
+            phase: Math.random() * Math.PI * 2
+        });
+    }
+
+    // --- AGGIORNAMENTO LOGICA (UPDATE) ---
+    function update(dt) {
+        frameCount++;
+
+        if (screenShake > 0) {
+            screenShake = Math.max(0, screenShake - 0.8 * dt);
+        }
+
+        // Animazione pacifica nella Mini Lobby (Santuario)
+        if (gameState === 'LOBBY') {
+            fox.runCycle += 0.14 * dt;
+
+            fox.blinkTimer += dt;
+            if (!fox.isBlinking && fox.blinkTimer > 150) {
+                fox.isBlinking = true;
+                fox.blinkTimer = 0;
+            } else if (fox.isBlinking && fox.blinkTimer > 10) {
+                fox.isBlinking = false;
+                fox.blinkTimer = 0;
+            }
+
+            clouds.forEach(c => {
+                c.x -= c.speed * 0.5 * dt;
+                if (c.x + c.w < -20) c.x = width + 40;
+            });
+
+            // Particelle mistiche fluttuanti nel Santuario
+            if (frameCount % 6 === 0) {
+                const form = getCurrentForm();
+                const pCol = form.trailColor && form.trailColor !== 'DIVINE' ? form.trailColor : '#fde047';
+                particles.push({
+                    x: fox.x + (Math.random() - 0.5) * 140,
+                    y: groundY - Math.random() * 10,
+                    vx: (Math.random() - 0.5) * 0.6,
+                    vy: -0.7 - Math.random() * 0.9,
+                    size: 2.5 + Math.random() * 2,
+                    color: pCol,
+                    life: 1.1,
+                    decay: 0.015
+                });
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.life -= p.decay * dt;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+            return;
+        }
+
+        if (gameState !== 'PLAYING') {
+            fox.runCycle += 0.12 * dt;
+            return;
+        }
+
+        if (fox.invulnTimer > 0) fox.invulnTimer -= dt;
+        if (fox.skillCooldown > 0) fox.skillCooldown = Math.max(0, fox.skillCooldown - dt);
+        if (fox.dashWaveTimer > 0) fox.dashWaveTimer -= dt;
+
+        // Incremento punteggio e velocità
+        score += 0.24 * (gameSpeed / baseSpeed) * ngPlusMultiplier * dt;
+        const speedBonus = Math.min(5.2, (level - 1) * 0.42 + (score / 1400));
+        gameSpeed = baseSpeed + speedBonus;
+
+        // Controllo passaggio di livello (fino a 8 code)
+        const targetLevel = Math.min(MAX_TAILS, Math.floor(score / POINTS_PER_LEVEL) + 1);
+        if (targetLevel > level) {
+            triggerLevelUp(targetLevel);
+        }
+
+        // Controllo attivazione Boss Finale dopo aver raggiunto le 8 code
+        const bossTriggerScore = (MAX_TAILS - 1) * POINTS_PER_LEVEL + BOSS_TRIGGER_OFFSET;
+        if (level === MAX_TAILS && !boss.active && !bossDefeatedInRun && score >= bossTriggerScore) {
+            startBossFight();
+        }
+
+        updateHUD();
+
+        // Fisica salto variabile
+        if (fox.isJumping && fox.jumpHoldTimer < fox.maxJumpHold) {
+            fox.vy -= 0.36 * dt;
+            fox.jumpHoldTimer += dt;
+        }
+
+        // Planata Eterea (Lv.4+)
+        const isGliding = level >= 4 && !fox.isGrounded && fox.isHoldingTouch && fox.vy > 0;
+        if (isGliding) {
+            fox.vy += fox.gravity * 0.22 * dt;
+            fox.vy = Math.min(fox.vy, 1.8);
+            if (frameCount % 3 === 0) {
+                particles.push({
+                    x: fox.x + Math.random() * 20,
+                    y: fox.y + fox.height,
+                    vx: -2,
+                    vy: 0.5,
+                    size: 3,
+                    color: '#bae6fd',
+                    life: 0.6,
+                    decay: 0.04
+                });
+            }
+        } else {
+            fox.vy += fox.gravity * dt;
+        }
+
+        fox.y += fox.vy * dt;
+
+        if (fox.y >= groundY - fox.height) {
+            if (!fox.isGrounded) {
+                fox.squashX = 1.18;
+                fox.squashY = 0.84;
+                spawnJumpDust('#fef3c7');
+            }
+            fox.y = groundY - fox.height;
+            fox.vy = 0;
+            fox.isGrounded = true;
+            fox.isJumping = false;
+            fox.jumpCount = 0;
+        }
+
+        fox.squashX += (1 - fox.squashX) * 0.2 * dt;
+        fox.squashY += (1 - fox.squashY) * 0.2 * dt;
+
+        if (fox.isGrounded) {
+            fox.runCycle += 0.28 * (gameSpeed / baseSpeed) * dt;
+        }
+
+        fox.blinkTimer += dt;
+        if (!fox.isBlinking && fox.blinkTimer > 160) {
+            fox.isBlinking = true;
+            fox.blinkTimer = 0;
+        } else if (fox.isBlinking && fox.blinkTimer > 10) {
+            fox.isBlinking = false;
+            fox.blinkTimer = 0;
+        }
+
+        // Scorrimento parallasse sfondo
+        clouds.forEach(c => {
+            c.x -= c.speed * dt;
+            if (c.x + c.w < -20) {
+                c.x = width + 40;
+                c.y = groundY * (0.14 + Math.random() * 0.28);
+            }
+        });
+
+        mountainsFar.forEach(m => { m.x -= gameSpeed * 0.14 * dt; });
+        if (mountainsFar.length && mountainsFar[0].x + mountainsFar[0].w < -60) {
+            const first = mountainsFar.shift();
+            const last = mountainsFar[mountainsFar.length - 1];
+            first.x = last.x + last.w * 0.72;
+            mountainsFar.push(first);
+        }
+
+        mountainsNear.forEach(m => { m.x -= gameSpeed * 0.3 * dt; });
+        if (mountainsNear.length && mountainsNear[0].x + mountainsNear[0].w < -60) {
+            const first = mountainsNear.shift();
+            const last = mountainsNear[mountainsNear.length - 1];
+            first.x = last.x + last.w * 0.75;
+            mountainsNear.push(first);
+        }
+
+        toriiGates.forEach(t => {
+            t.x -= gameSpeed * 0.55 * dt;
+            if (t.x < -100) t.x = width + 320 + Math.random() * 250;
+        });
+
+        groundDetails.forEach(g => {
+            g.x -= gameSpeed * dt;
+            if (g.x < -30) g.x += groundDetails.length * 28;
+        });
+
+        // --- AGGIORNAMENTO BOSS FINALE ---
+        if (boss.active) {
+            updateBoss(dt);
+        } else {
+            obstacleTimer += dt;
+            if (obstacleTimer >= nextObstacleInterval) {
+                spawnObstacle();
+                obstacleTimer = 0;
+                const minGap = Math.max(46, 86 - level * 3.5);
+                nextObstacleInterval = minGap + Math.random() * 48;
+            }
+        }
+
+        // Generazione Sfere Spirituali
+        orbTimer += dt;
+        const orbInterval = boss.active ? 90 : 115;
+        if (orbTimer >= orbInterval) {
+            spawnSpiritOrb(boss.active);
+            orbTimer = 0;
+        }
+
+        const foxHitbox = {
+            x: fox.x + 8,
+            y: fox.y + 6,
+            w: fox.width - 14,
+            h: fox.height - 8
+        };
+
+        // Aggiornamento Sfere Spirituali (potenziato da Calamita Spirituale)
+        const magnetRange = (level >= 7 ? 190 : 0) + upgrades.magnet * 55;
+        for (let i = spiritOrbs.length - 1; i >= 0; i--) {
+            const orb = spiritOrbs[i];
+            orb.x -= gameSpeed * 0.9 * dt;
+            orb.phase += 0.1 * dt;
+
+            if (magnetRange > 0) {
+                const dx = (fox.x + fox.width * 0.5) - orb.x;
+                const dy = (fox.y + fox.height * 0.5) - orb.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < magnetRange && dist > 1) {
+                    orb.x += (dx / dist) * 7.2 * dt;
+                    orb.y += (dy / dist) * 7.2 * dt;
+                }
+            }
+
+            const distToFox = Math.hypot((fox.x + fox.width * 0.5) - orb.x, (fox.y + fox.height * 0.5) - orb.y);
+            if (distToFox < orb.radius + 22) {
+                playSound('orb');
+                const orbValue = Math.max(1, Math.round((orb.sacred ? 3 : 2) * (1 + upgrades.magnet * 0.2) * ngPlusMultiplier));
+                runOrbsEarned += orbValue;
+                spiritOrbsTotal += orbValue;
+                saveSanctuaryProgress();
+
+                score += (orb.sacred ? 40 : 25) * ngPlusMultiplier;
+                fox.skillCooldown = Math.max(0, fox.skillCooldown - 65);
+
+                if (orb.sacred && boss.active) {
+                    const dmgMult = 1 + upgrades.flame * 0.15;
+                    playerProjectiles.push({
+                        type: 'divine_fire',
+                        x: fox.x + fox.width,
+                        y: fox.y + fox.height * 0.4,
+                        vx: 16,
+                        vy: ((boss.y + 45) - (fox.y + 15)) * 0.03,
+                        radius: 16,
+                        damage: Math.round(16 * dmgMult),
+                        life: 90,
+                        color: '#fde047'
+                    });
+                    spawnFloatingText(orb.x, orb.y - 10, `RAGGIO +${orbValue}🔮`, '#fde047');
+                } else if (level >= 3 && fox.shieldCharges === 0) {
+                    fox.shieldCharges = 1;
+                    renderAbilityBadges();
+                    spawnFloatingText(orb.x, orb.y - 10, `SCUDO +${orbValue}🔮`, '#34d399');
+                } else {
+                    spawnFloatingText(orb.x, orb.y - 10, `+${orbValue}🔮`, '#38bdf8');
+                }
+
+                spiritOrbs.splice(i, 1);
+                continue;
+            }
+
+            if (orb.x < -30) spiritOrbs.splice(i, 1);
+        }
+
+        // Aggiornamento Proiettili della Volpe
+        for (let i = playerProjectiles.length - 1; i >= 0; i--) {
+            const proj = playerProjectiles[i];
+            proj.x += proj.vx * dt;
+            proj.y += proj.vy * dt;
+            proj.life -= dt;
+
+            if (frameCount % 2 === 0) {
+                particles.push({
+                    x: proj.x,
+                    y: proj.y + (Math.random() - 0.5) * 10,
+                    vx: -2,
+                    vy: (Math.random() - 0.5) * 1.5,
+                    size: 4,
+                    color: proj.color,
+                    life: 0.6,
+                    decay: 0.04
+                });
+            }
+
+            for (let j = obstacles.length - 1; j >= 0; j--) {
+                const obs = obstacles[j];
+                if (
+                    proj.x + proj.radius > obs.x &&
+                    proj.x - proj.radius < obs.x + obs.w &&
+                    proj.y + proj.radius > obs.y &&
+                    proj.y - proj.radius < obs.y + obs.h
+                ) {
+                    score += 30 * ngPlusMultiplier;
+                    spawnFloatingText(obs.x, obs.y - 10, 'DISTRUTTO! +30', '#fb923c');
+                    for (let k = 0; k < 12; k++) {
+                        particles.push({
+                            x: obs.x + obs.w * 0.5,
+                            y: obs.y + obs.h * 0.5,
+                            vx: (Math.random() - 0.5) * 6,
+                            vy: -Math.random() * 5,
+                            size: 4,
+                            color: proj.color,
+                            life: 0.8,
+                            decay: 0.035
+                        });
+                    }
+                    obstacles.splice(j, 1);
+                    if (proj.type !== 'shadow_wave') {
+                        proj.life = 0;
+                    }
+                    break;
+                }
+            }
+
+            if (boss.active && proj.life > 0) {
+                if (
+                    proj.x + proj.radius > boss.x - 45 &&
+                    proj.x - proj.radius < boss.x + 55 &&
+                    proj.y + proj.radius > boss.y - 10 &&
+                    proj.y - proj.radius < boss.y + 110
+                ) {
+                    damageBoss(proj.damage, proj.x, proj.y);
+                    proj.life = 0;
+                }
+            }
+
+            if (proj.life <= 0 || proj.x > width + 50) {
+                playerProjectiles.splice(i, 1);
+            }
+        }
+
+        // Aggiornamento Ostacoli
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            const obs = obstacles[i];
+            obs.x -= gameSpeed * dt;
+
+            if (obs.type === 'lantern') {
+                obs.y = groundY - 46 + Math.sin(frameCount * 0.08 + obs.animOffset) * 5;
+            }
+
+            const obsHitbox = {
+                x: obs.x + 5,
+                y: obs.y + 5,
+                w: obs.w - 10,
+                h: obs.h - 6
+            };
+
+            if (
+                foxHitbox.x < obsHitbox.x + obsHitbox.w &&
+                foxHitbox.x + foxHitbox.w > obsHitbox.x &&
+                foxHitbox.y < obsHitbox.y + obsHitbox.h &&
+                foxHitbox.y + foxHitbox.h > obsHitbox.y
+            ) {
+                obstacles.splice(i, 1);
+                handleFoxDamage();
+                if (gameState === 'GAMEOVER') return;
+                continue;
+            }
+
+            if (obs.x + obs.w < -40) {
+                obstacles.splice(i, 1);
+            }
+        }
+
+        // Aggiornamento Attacchi del Boss
+        for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+            const bp = bossProjectiles[i];
+            bp.x += bp.vx * dt;
+            bp.y += bp.vy * dt;
+
+            const dist = Math.hypot((fox.x + fox.width * 0.5) - bp.x, (fox.y + fox.height * 0.5) - bp.y);
+            if (dist < bp.radius + 14) {
+                bossProjectiles.splice(i, 1);
+                handleFoxDamage();
+                if (gameState === 'GAMEOVER') return;
+                continue;
+            }
+
+            if (bp.x < -50 || bp.y > groundY + 20) {
+                bossProjectiles.splice(i, 1);
+            }
+        }
+
+        // Scia di particelle leggendarie
+        const currentForm = getCurrentForm();
+        const tailsVisual = getDisplayTailsCount();
+        if (currentForm.trailColor && frameCount % (tailsVisual === MAX_TAILS ? 2 : 4) === 0) {
+            const divinePalette = ['#fde047', '#ffffff', '#f472b6', '#38bdf8', '#a78bfa'];
+            const pColor = currentForm.trailColor === 'DIVINE'
+                ? divinePalette[Math.floor(Math.random() * divinePalette.length)]
+                : currentForm.trailColor;
+
+            particles.push({
+                x: fox.x - 10 + (Math.random() - 0.5) * 14,
+                y: fox.y + fox.height * 0.5 + (Math.random() - 0.5) * 18,
+                vx: -gameSpeed * 0.35 - Math.random() * 1.2,
+                vy: -0.4 - Math.random() * 1.1,
+                size: tailsVisual === MAX_TAILS ? 3.5 + Math.random() * 2.5 : 2.5 + Math.random() * 2,
+                color: pColor,
+                life: 0.85,
+                decay: 0.032
+            });
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vy += 0.12 * dt;
+            p.life -= p.decay * dt;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            const ft = floatingTexts[i];
+            ft.y -= 1.1 * dt;
+            ft.life -= 0.022 * dt;
+            if (ft.life <= 0) floatingTexts.splice(i, 1);
+        }
+    }
+
+    // --- LOGICA ATTACCHI DEL BOSS ---
+    function updateBoss(dt) {
+        boss.hoverPhase += 0.06 * dt;
+        if (boss.hitFlash > 0) boss.hitFlash -= dt;
+
+        if (boss.x > boss.targetX) {
+            boss.x -= 3.5 * dt;
+        }
+        boss.y = groundY - 122 + Math.sin(boss.hoverPhase) * 14;
+
+        if (boss.telegraphTimer > 0) {
+            boss.telegraphTimer -= dt;
+            if (boss.telegraphTimer <= 0 && boss.pendingMeteorX !== null) {
+                bossProjectiles.push({
+                    type: 'meteor',
+                    x: boss.pendingMeteorX,
+                    y: -20,
+                    vx: -1.5,
+                    vy: 9.5,
+                    radius: 16
+                });
+                boss.pendingMeteorX = null;
+            }
+        }
+
+        boss.attackTimer -= dt;
+        if (boss.attackTimer <= 0) {
+            boss.attackPattern = (boss.attackPattern + 1) % 3;
+
+            if (boss.attackPattern === 0) {
+                bossProjectiles.push({
+                    type: 'ground_orb',
+                    x: boss.x - 35,
+                    y: groundY - 22,
+                    vx: -(gameSpeed * 1.12),
+                    vy: 0,
+                    radius: 16
+                });
+                boss.attackTimer = 85;
+            } else if (boss.attackPattern === 1) {
+                bossProjectiles.push({
+                    type: 'air_flame',
+                    x: boss.x - 35,
+                    y: groundY - 66,
+                    vx: -(gameSpeed * 1.18),
+                    vy: 0,
+                    radius: 15
+                });
+                boss.attackTimer = 85;
+            } else {
+                boss.pendingMeteorX = fox.x + 55;
+                boss.telegraphTimer = 42;
+                boss.attackTimer = 95;
+            }
+        }
+    }
+
+    // --- DISEGNO SCENA (RENDER) ---
+    function drawBackground() {
+        let themeIndex = level - 1;
+        if (gameState === 'LOBBY') {
+            themeIndex = selectedSkinIndex >= 0 ? selectedSkinIndex : Math.max(0, unlockedSkins.lastIndexOf(true));
+        }
+
+        const theme = boss.active
+            ? BOSS_THEME
+            : LEVEL_THEMES[Math.min(themeIndex, LEVEL_THEMES.length - 1)];
+
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, groundY);
+        skyGrad.addColorStop(0, theme.skyTop);
+        skyGrad.addColorStop(1, theme.skyBottom);
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, width, groundY);
+
+        if (theme.stars > 0) {
+            stars.forEach(s => {
+                const alpha = theme.stars * (0.5 + 0.5 * Math.sin(frameCount * 0.05 + s.twinkle));
+                ctx.fillStyle = `rgba(255, 253, 224, ${alpha})`;
+                ctx.fillRect(s.x, s.y, s.size, s.size);
+            });
+        }
+
+        const celestX = width * 0.78;
+        const celestY = groundY * 0.28;
+        if (boss.active) {
+            ctx.fillStyle = 'rgba(225, 29, 72, 0.32)';
+            ctx.beginPath();
+            ctx.arc(celestX, celestY, 44, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#e11d48';
+            ctx.beginPath();
+            ctx.arc(celestX, celestY, 26, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (themeIndex <= 3) {
+            ctx.fillStyle = 'rgba(254, 240, 138, 0.35)';
+            ctx.beginPath();
+            ctx.arc(celestX, celestY, 34, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#fef08a';
+            ctx.beginPath();
+            ctx.arc(celestX, celestY, 22, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = 'rgba(254, 249, 195, 0.25)';
+            ctx.beginPath();
+            ctx.arc(celestX, celestY, 36, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#fef9c3';
+            ctx.beginPath();
+            ctx.arc(celestX, celestY, 22, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = (themeIndex >= 5 || boss.active) ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.72)';
+        clouds.forEach(c => {
+            ctx.beginPath();
+            ctx.roundRect(c.x, c.y, c.w, 16, 8);
+            ctx.roundRect(c.x + c.w * 0.2, c.y - 10, c.w * 0.55, 16, 8);
+            ctx.fill();
+        });
+
+        ctx.fillStyle = theme.mountainFar;
+        mountainsFar.forEach(m => {
+            ctx.beginPath();
+            ctx.moveTo(m.x, groundY);
+            ctx.lineTo(m.x + m.w * 0.5, groundY - m.h);
+            ctx.lineTo(m.x + m.w, groundY);
+            ctx.closePath();
+            ctx.fill();
+        });
+
+        ctx.fillStyle = theme.mountainNear;
+        mountainsNear.forEach(m => {
+            ctx.beginPath();
+            ctx.moveTo(m.x, groundY);
+            ctx.lineTo(m.x + m.w * 0.5, groundY - m.h);
+            ctx.lineTo(m.x + m.w, groundY);
+            ctx.closePath();
+            ctx.fill();
+        });
+
+        if (gameState === 'LOBBY') {
+            // Portale Torii sacro incorniciato dietro la Volpe nel Santuario
+            drawTorii(fox.x + fox.width * 0.5, groundY, 1.35, themeIndex);
+        } else {
+            toriiGates.forEach(t => drawTorii(t.x, groundY, t.scale, themeIndex));
+        }
+
+        ctx.fillStyle = theme.groundSoil;
+        ctx.fillRect(0, groundY, width, height - groundY);
+
+        ctx.fillStyle = theme.groundTop;
+        ctx.fillRect(0, groundY, width, 12);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.fillRect(0, groundY + 12, width, 3);
+
+        groundDetails.forEach(g => {
+            if (g.type === 'grass') {
+                ctx.fillStyle = theme.groundTop;
+                ctx.fillRect(g.x, groundY - 4, 4, 4);
+                ctx.fillRect(g.x + 6, groundY - 3, 3, 3);
+            } else {
+                ctx.fillStyle = 'rgba(255,255,255,0.14)';
+                ctx.fillRect(g.x, groundY + 18 + (g.offset % 18), 6, 4);
+            }
+        });
+    }
+
+    function drawTorii(x, y, scale, themeIndex) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+
+        ctx.fillStyle = (themeIndex >= 5 || boss.active) ? '#7f1d1d' : '#dc2626';
+        ctx.fillRect(-24, -64, 7, 64);
+        ctx.fillRect(17, -64, 7, 64);
+        ctx.fillRect(-30, -48, 60, 5);
+
+        ctx.fillStyle = (themeIndex >= 5 || boss.active) ? '#450a0a' : '#991b1b';
+        ctx.fillRect(-36, -68, 72, 6);
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(-38, -71, 76, 4);
+
+        ctx.restore();
+    }
+
+    // --- DISEGNO DEL BOSS FINALE (DRAGO DELL'ECLISSI) ---
+    function drawBoss() {
+        if (!boss.active) return;
+
+        if (boss.telegraphTimer > 0 && boss.pendingMeteorX !== null) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(244, 63, 94, 0.35)';
+            ctx.beginPath();
+            ctx.ellipse(boss.pendingMeteorX, groundY, 26, 7, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fb7185';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(boss.x, boss.y);
+
+        const pulse = 1 + Math.sin(frameCount * 0.12) * 0.08;
+        ctx.fillStyle = 'rgba(147, 51, 234, 0.28)';
+        ctx.beginPath();
+        ctx.arc(0, 52, 68 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        const wingFlap = Math.sin(frameCount * 0.16) * 14;
+        ctx.fillStyle = boss.hitFlash > 0 ? '#ffffff' : '#3b0764';
+        ctx.beginPath();
+        ctx.moveTo(10, 35);
+        ctx.lineTo(56, -15 + wingFlap);
+        ctx.lineTo(48, 45 + wingFlap * 0.5);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = boss.hitFlash > 0 ? '#ffffff' : '#1e1b4b';
+        ctx.beginPath();
+        ctx.roundRect(-34, 24, 68, 74, 18);
+        ctx.fill();
+
+        ctx.fillStyle = boss.hitFlash > 0 ? '#fde047' : '#be123c';
+        ctx.beginPath();
+        ctx.roundRect(-24, 34, 34, 52, 12);
+        ctx.fill();
+
+        ctx.fillStyle = boss.hitFlash > 0 ? '#ffffff' : '#0f172a';
+        ctx.beginPath();
+        ctx.roundRect(-48, 0, 56, 38, 12);
+        ctx.fill();
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.moveTo(-12, 2);
+        ctx.lineTo(14, -26);
+        ctx.lineTo(4, 6);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.moveTo(-26, 2);
+        ctx.lineTo(-8, -22);
+        ctx.lineTo(-14, 5);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#fde047';
+        ctx.shadowColor = '#f43f5e';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(-38, 14);
+        ctx.lineTo(-22, 10);
+        ctx.lineTo(-26, 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = '#a855f7';
+        ctx.fillRect(-46, 26, 24, 6);
+
+        ctx.restore();
+    }
+
+    // --- DISEGNO DELLA VOLPE E DELLE SUE CODE ---
+    function drawFox() {
+        const form = getCurrentForm();
+        const tailsToDraw = getDisplayTailsCount();
+        const isSupremeForm = tailsToDraw === MAX_TAILS || selectedSkinIndex === 7;
+
+        ctx.save();
+
+        if (fox.invulnTimer > 0 && Math.floor(fox.invulnTimer / 4) % 2 === 0) {
+            ctx.globalAlpha = 0.55;
+        }
+
+        const centerX = fox.x + fox.width * 0.5;
+        const bottomY = fox.y + fox.height;
+
+        ctx.translate(centerX, bottomY);
+        const lobbyScale = gameState === 'LOBBY' ? 1.35 : 1;
+        ctx.scale(fox.squashX * lobbyScale, fox.squashY * lobbyScale);
+
+        const bounceY = (gameState === 'LOBBY')
+            ? Math.sin(fox.runCycle * 0.6) * -2
+            : (fox.isGrounded ? Math.abs(Math.sin(fox.runCycle)) * -3 : 0);
+        ctx.translate(0, bounceY);
+
+        // 0. AURA MISTICA E AUREOLA SACRA
+        if (form.auraColor) {
+            const pulse = 1 + Math.sin(frameCount * 0.1) * 0.08;
+            ctx.save();
+            ctx.fillStyle = form.auraColor;
+            ctx.beginPath();
+            ctx.ellipse(-6, -18, 34 * pulse, 22 * pulse, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        if (isSupremeForm) {
+            const haloFloat = Math.sin(frameCount * 0.12) * 2;
+            ctx.save();
+            ctx.strokeStyle = '#fde047';
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.ellipse(11, -50 + haloFloat, 11, 3.5, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 1. CODE
+        drawFoxTails(tailsToDraw, form, isSupremeForm);
+
+        // 2. ZAMPE POSTERIORI
+        const legSwing = (gameState === 'LOBBY') ? 0 : (fox.isGrounded ? Math.sin(fox.runCycle) * 7 : 5);
+        ctx.fillStyle = form.bodyDeep;
+        ctx.fillRect(-13 - legSwing * 0.6, -11, 6, 11);
+        ctx.fillStyle = form.paws;
+        ctx.fillRect(-13 - legSwing * 0.6, -4, 6, 4);
+
+        // 3. CORPO
+        ctx.fillStyle = form.bodyMain;
+        ctx.beginPath();
+        ctx.roundRect(-16, -24, 30, 16, 6);
+        ctx.fill();
+
+        if (isSupremeForm) {
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = form.chest;
+        ctx.beginPath();
+        ctx.roundRect(6, -22, 10, 13, 5);
+        ctx.fill();
+
+        // 4. ZAMPE ANTERIORI
+        ctx.fillStyle = form.bodyDark;
+        ctx.fillRect(6 + legSwing * 0.7, -11, 6, 11);
+        ctx.fillStyle = form.paws;
+        ctx.fillRect(6 + legSwing * 0.7, -4, 6, 4);
+
+        // 5. TESTA
+        ctx.save();
+        ctx.translate(12, -26);
+        if (!fox.isGrounded && gameState === 'PLAYING') {
+            ctx.rotate(fox.vy < 0 ? -0.12 : 0.12);
+        }
+
+        ctx.fillStyle = form.bodyDeep;
+        ctx.beginPath();
+        ctx.moveTo(-6, -6);
+        ctx.lineTo(-9, -18);
+        ctx.lineTo(0, -8);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = form.bodyMain;
+        ctx.beginPath();
+        ctx.roundRect(-10, -10, 22, 17, 6);
+        ctx.fill();
+
+        ctx.fillStyle = form.bodyMain;
+        ctx.beginPath();
+        ctx.roundRect(8, -4, 11, 10, 4);
+        ctx.fill();
+
+        ctx.fillStyle = form.chest;
+        ctx.beginPath();
+        ctx.roundRect(2, -1, 16, 8, 4);
+        ctx.fill();
+
+        ctx.fillStyle = form.bodyDark;
+        ctx.beginPath();
+        ctx.moveTo(-2, -7);
+        ctx.lineTo(-3, -20);
+        ctx.lineTo(6, -8);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = form.earInner;
+        ctx.beginPath();
+        ctx.moveTo(-1, -8);
+        ctx.lineTo(-2, -16);
+        ctx.lineTo(4, -9);
+        ctx.closePath();
+        ctx.fill();
+
+        if (form.foreheadMark) {
+            ctx.fillStyle = form.foreheadMark;
+            ctx.beginPath();
+            ctx.moveTo(4, -9);
+            ctx.lineTo(6, -6);
+            ctx.lineTo(4, -3);
+            ctx.lineTo(2, -6);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        ctx.fillStyle = form.paws;
+        ctx.fillRect(16, -4, 4, 4);
+
+        if (fox.isBlinking) {
+            ctx.fillStyle = form.eye;
+            ctx.fillRect(4, -5, 5, 2);
+        } else {
+            ctx.fillStyle = form.eye;
+            ctx.fillRect(5, -7, 4, 5);
+            ctx.fillStyle = form.eyeSparkle;
+            ctx.fillRect(7, -7, 2, 2);
+        }
+
+        if (isSupremeForm) {
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(-10, -10, 22, 17);
+        }
+
+        ctx.restore();
+
+        // 6. SCUDO DI FOGLIE VISIVO ATTORNO ALLA VOLPE
+        if (fox.shieldCharges > 0 && gameState === 'PLAYING') {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(52, 211, 153, 0.85)';
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.14)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, -18, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            for (let s = 0; s < Math.min(fox.shieldCharges + 2, 6); s++) {
+                const a = frameCount * 0.06 + (s * Math.PI * 2) / Math.min(fox.shieldCharges + 2, 6);
+                const lx = Math.cos(a) * 30;
+                const ly = -18 + Math.sin(a) * 30;
+                ctx.fillStyle = '#6ee7b7';
+                ctx.beginPath();
+                ctx.ellipse(lx, ly, 5, 2.5, a, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        ctx.restore();
+    }
+
+    function drawFoxTails(numTails, form, isSupremeForm) {
+        const baseTailX = -14;
+        const baseTailY = -16;
+
+        const spreadAngle = numTails === 1 ? 0 : Math.min(1.45, 0.28 + (numTails - 1) * 0.17);
+        const startAngle = -spreadAngle * 0.55 - 0.25;
+
+        const rainbowTips = ['#fde047', '#f472b6', '#38bdf8', '#a78bfa', '#34d399', '#fb923c', '#f87171', '#fef08a'];
+
+        for (let i = 0; i < numTails; i++) {
+            ctx.save();
+            ctx.translate(baseTailX, baseTailY);
+
+            const fraction = numTails === 1 ? 0.5 : i / (numTails - 1);
+            const angleOffset = numTails === 1 ? -0.22 : startAngle + fraction * spreadAngle;
+            const wave = Math.sin(fox.runCycle * 0.9 + i * 0.75) * 0.13;
+
+            ctx.rotate(angleOffset + wave);
+
+            const lengthScale = 1 + (numTails > 3 ? Math.sin(fraction * Math.PI) * 0.16 : 0);
+            ctx.scale(lengthScale, 1);
+
+            ctx.fillStyle = i % 2 === 0 ? form.tailPrimary : form.tailSecondary;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(-18, -11, -34, -4);
+            ctx.quadraticCurveTo(-38, 2, -32, 7);
+            ctx.quadraticCurveTo(-16, 10, 0, 4);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = form.tailTip === 'RAINBOW_GOLD'
+                ? rainbowTips[(i + Math.floor(frameCount * 0.08)) % rainbowTips.length]
+                : form.tailTip;
+            ctx.beginPath();
+            ctx.moveTo(-24, -6);
+            ctx.quadraticCurveTo(-34, -6, -36, 1);
+            ctx.quadraticCurveTo(-34, 7, -23, 6);
+            ctx.quadraticCurveTo(-26, 0, -24, -6);
+            ctx.closePath();
+            ctx.fill();
+
+            if (isSupremeForm) {
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+                ctx.lineWidth = 1.2;
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+    }
+
+    // --- DISEGNO SFERE SPIRITUALI, PROIETTILI E OSTACOLI ---
+    function drawSpiritOrbs() {
+        spiritOrbs.forEach(orb => {
+            const floatY = orb.y + Math.sin(orb.phase) * 4;
+            ctx.save();
+            ctx.fillStyle = orb.sacred ? 'rgba(253, 224, 71, 0.32)' : 'rgba(56, 189, 248, 0.28)';
+            ctx.beginPath();
+            ctx.arc(orb.x, floatY, orb.radius + 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = orb.sacred ? '#fde047' : '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(orb.x, floatY, orb.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(orb.x - 3, floatY - 3, orb.radius * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    function drawProjectiles() {
+        playerProjectiles.forEach(proj => {
+            ctx.save();
+            if (proj.type === 'shadow_wave') {
+                ctx.strokeStyle = '#d8b4fe';
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(proj.x, proj.y + 16, proj.radius, -Math.PI * 0.45, Math.PI * 0.45);
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = proj.color;
+                ctx.shadowColor = proj.color;
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(proj.x + 3, proj.y, proj.radius * 0.45, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        });
+
+        bossProjectiles.forEach(bp => {
+            ctx.save();
+            ctx.fillStyle = bp.type === 'meteor' ? '#f43f5e' : '#9333ea';
+            ctx.shadowColor = '#e11d48';
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(bp.x, bp.y, bp.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#1e1b4b';
+            ctx.beginPath();
+            ctx.arc(bp.x, bp.y, bp.radius * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    function drawObstacles() {
+        obstacles.forEach(obs => {
+            if (obs.type === 'rock') {
+                ctx.fillStyle = '#475569';
+                ctx.beginPath();
+                ctx.moveTo(obs.x, obs.y + obs.h);
+                ctx.lineTo(obs.x + 5, obs.y + 8);
+                ctx.lineTo(obs.x + obs.w * 0.45, obs.y);
+                ctx.lineTo(obs.x + obs.w - 4, obs.y + 10);
+                ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.beginPath();
+                ctx.moveTo(obs.x + 6, obs.y + 9);
+                ctx.lineTo(obs.x + obs.w * 0.45, obs.y + 2);
+                ctx.lineTo(obs.x + obs.w * 0.5, obs.y + 14);
+                ctx.closePath();
+                ctx.fill();
+
+                if (obs.double) {
+                    ctx.fillStyle = '#334155';
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x + obs.w * 0.45, obs.y + obs.h);
+                    ctx.lineTo(obs.x + obs.w * 0.6, obs.y + 10);
+                    ctx.lineTo(obs.x + obs.w * 0.85, obs.y + 4);
+                    ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            } else if (obs.type === 'bush') {
+                ctx.fillStyle = '#15803d';
+                ctx.beginPath();
+                ctx.arc(obs.x + 12, obs.y + obs.h - 12, 12, 0, Math.PI * 2);
+                ctx.arc(obs.x + 28, obs.y + obs.h - 12, 13, 0, Math.PI * 2);
+                ctx.arc(obs.x + 20, obs.y + obs.h - 20, 13, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#4ade80';
+                ctx.fillRect(obs.x + 14, obs.y + 6, 4, 4);
+                ctx.fillRect(obs.x + 25, obs.y + 10, 4, 4);
+
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(obs.x + 10, obs.y + 18, 4, 4);
+                ctx.fillRect(obs.x + 22, obs.y + 15, 4, 4);
+                ctx.fillRect(obs.x + 31, obs.y + 20, 4, 4);
+            } else if (obs.type === 'log') {
+                ctx.fillStyle = '#78350f';
+                ctx.beginPath();
+                ctx.roundRect(obs.x, obs.y + 4, obs.w, obs.h - 4, 6);
+                ctx.fill();
+
+                ctx.fillStyle = '#451a03';
+                ctx.fillRect(obs.x + 8, obs.y + 9, 18, 3);
+                ctx.fillRect(obs.x + 16, obs.y + 16, 22, 3);
+
+                ctx.fillStyle = '#fde68a';
+                ctx.beginPath();
+                ctx.arc(obs.x + obs.w - 8, obs.y + obs.h * 0.5 + 2, 8, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (obs.type === 'lantern') {
+                ctx.fillStyle = 'rgba(251, 146, 60, 0.28)';
+                ctx.beginPath();
+                ctx.arc(obs.x + obs.w * 0.5, obs.y + obs.h * 0.5, 22, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.roundRect(obs.x + 4, obs.y + 5, obs.w - 8, obs.h - 10, 6);
+                ctx.fill();
+
+                ctx.fillStyle = '#fef08a';
+                ctx.fillRect(obs.x + 9, obs.y + 10, obs.w - 18, obs.h - 20);
+
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(obs.x + 6, obs.y + 2, obs.w - 12, 4);
+                ctx.fillRect(obs.x + 6, obs.y + obs.h - 6, obs.w - 12, 4);
+            }
+        });
+    }
+
+    function drawParticlesAndText() {
+        particles.forEach(p => {
+            ctx.globalAlpha = Math.max(0, p.life);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+        });
+        ctx.globalAlpha = 1;
+
+        floatingTexts.forEach(ft => {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, ft.life);
+            ctx.font = '800 12px Inter, sans-serif';
+            ctx.fillStyle = ft.color;
+            ctx.shadowColor = '#000000';
+            ctx.shadowBlur = 4;
+            ctx.fillText(ft.text, ft.x, ft.y);
+            ctx.restore();
+        });
+    }
+
+    // --- CICLO PRINCIPALE (GAME LOOP) ---
+    function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const rawDt = (timestamp - lastTime) / 16.6667;
+        const dt = Math.min(rawDt, 2.5);
+        lastTime = timestamp;
+
+        update(dt);
+
+        ctx.save();
+        if (screenShake > 0) {
+            const dx = (Math.random() - 0.5) * screenShake;
+            const dy = (Math.random() - 0.5) * screenShake;
+            ctx.translate(dx, dy);
+        }
+
+        ctx.clearRect(-20, -20, width + 40, height + 40);
+        drawBackground();
+        drawSpiritOrbs();
+        drawObstacles();
+        drawBoss();
+        drawFox();
+        drawProjectiles();
+        drawParticlesAndText();
+        ctx.restore();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // --- AVVIO INIZIALE NELLA MINI LOBBY ---
+    window.addEventListener('resize', resizeCanvas);
+    window.onload = function() {
+        resizeCanvas();
+        renderLobbyUI();
+        renderTailIcons();
+        updateHUD();
+        requestAnimationFrame(gameLoop);
+    };
+})();
+</script>
+</body>
+</html>
